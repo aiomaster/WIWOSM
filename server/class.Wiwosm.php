@@ -69,8 +69,8 @@ class Wiwosm {
 		//$countFiles = system('ls -RU1 --color=never '.$json_path.' | wc -l');
 		echo 'Counting generated files …'."\n";
 		$countFiles = system('find '.$this->json_path.' -type f | wc -l');
-		// if there are more than 500000
-		if ( $countFiles > 500000 ) {
+		// if there are more than 100000
+		if ( $countFiles > 100000 ) {
 			rename(self::JSON_PATH , self::JSON_PATH . '_old');
 			rename($this->json_path , self::JSON_PATH );
 		}
@@ -96,7 +96,7 @@ regexp_replace(
       ':',
       regexp_replace(
         tags->substring(array_to_string(akeys(tags),',') from '[^,]*wikipedia:?[^,]*'), -- get the first wikipedia tag from hstore
-        E'^http[s]?://(\\w*)\\.wikipedia\\.org/wiki/(.*)$', -- matches if the value is a wikipedia url (otherwise it is an article)
+        E'^https?://(\\w*)\\.wikipedia\\.org/wiki/(.*)$', -- matches if the value is a wikipedia url (otherwise it is an article)
         '\1:\2' -- get the domain prefix and use it as language key followed by the article name
       )
     ) -- resulting string is for example wikipedia:de:Dresden
