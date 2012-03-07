@@ -8,8 +8,8 @@ class Wiwosm {
 	const simplifyGeoJSON = 'ST_AsGeoJSON(
 		CASE
 			WHEN ST_NPoints(ST_Collect(way))<10000 THEN ST_Collect(way)
-			WHEN ST_NPoints(ST_Collect(way))>10000 AND ST_NPoints(ST_Collect(way))<20000 THEN ST_Simplify(ST_Collect(way),20)
-			ELSE ST_Simplify(ST_Collect(way),150)
+			WHEN ST_NPoints(ST_Collect(way)) BETWEEN 10000 AND 30000 THEN ST_SimplifyPreserveTopology(ST_Collect(way),40)
+			ELSE ST_SimplifyPreserveTopology(ST_Collect(way),300)
 		END
 	,9) AS geojson';
 
@@ -33,6 +33,7 @@ class Wiwosm {
 		//$this->conn = pg_connect('host=localhost port=5432 dbname=osm user=master');
 		// check for connection error
 		if($e = pg_last_error()) trigger_error($e, E_USER_ERROR);
+		pg_set_client_encoding($this->conn, UNICODE);
 	}
 
 	/**
@@ -67,13 +68,16 @@ class Wiwosm {
 
 	function testAndRename() {
 		//$countFiles = system('ls -RU1 --color=never '.$json_path.' | wc -l');
+
 		echo 'Counting generated files …'."\n";
 		$countFiles = system('find '.$this->json_path.' -type f | wc -l');
 		// if there are more than 100000
 		if ( $countFiles > 100000 ) {
+			exec('rm -r ' . self::JSON_PATH . '_old');
 			rename(self::JSON_PATH , self::JSON_PATH . '_old');
 			rename($this->json_path , self::JSON_PATH );
 		}
+
 	}
 
 	function exithandler() {
@@ -96,13 +100,13 @@ regexp_replace(
       ':',
       regexp_replace(
         tags->substring(array_to_string(akeys(tags),',') from '[^,]*wikipedia:?[^,]*'), -- get the first wikipedia tag from hstore
-        E'^https?://(\\w*)\\.wikipedia\\.org/wiki/(.*)$', -- matches if the value is a wikipedia url (otherwise it is an article)
+        '^https?://(\w*)\.wikipedia\.org/wiki/(.*)$', -- matches if the value is a wikipedia url (otherwise it is an article)
         '\1:\2' -- get the domain prefix and use it as language key followed by the article name
       )
     ) -- resulting string is for example wikipedia:de:Dresden
     from 11 -- remove the "wikipedia:" prefix
   ),
-  E'^(\\w*:)\\1','\1' -- it is possible that there is such a thing like "de:de:Artikel" left if there was a tag like "wikipedia:de=http://de.wikipedia.org/wiki/Artikel", so remove double language labels
+  '^(\w*:)\1','\1' -- it is possible that there is such a thing like "de:de:Artikel" left if there was a tag like "wikipedia:de=http://de.wikipedia.org/wiki/Artikel", so remove double language labels
 ) AS "wikipedia"
 FROM (
 ( SELECT osm_id, tags, way FROM planet_point WHERE strpos(array_to_string(akeys(tags),','),'wikipedia')>0 )
@@ -194,7 +198,7 @@ EOQ;
 	}
 
 	function processOsmItems() {
-		$sql = '( SELECT lang,article,'.self::simplifyGeoJSON.' FROM  wiwosm GROUP BY lang,article ORDER BY lang )';
+		$sql = '( SELECT lang,article,'.self::simplifyGeoJSON.' FROM  wiwosm WHERE lang != \'http\' AND article != \'http\' GROUP BY lang,article ORDER BY lang )';
 
 		// this consumes just too mutch memory:
 		/*
