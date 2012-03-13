@@ -8,8 +8,10 @@ class Wiwosm {
 	const simplifyGeoJSON = 'ST_AsGeoJSON(
 		CASE
 			WHEN ST_NPoints(ST_Collect(way))<10000 THEN ST_Collect(way)
-			WHEN ST_NPoints(ST_Collect(way)) BETWEEN 10000 AND 30000 THEN ST_SimplifyPreserveTopology(ST_Collect(way),40)
-			ELSE ST_SimplifyPreserveTopology(ST_Collect(way),300)
+			WHEN ST_NPoints(ST_Collect(way)) BETWEEN 10000 AND 20000 THEN ST_SimplifyPreserveTopology(ST_Collect(way),(ST_Perimeter(ST_Collect(way))+ST_Length(ST_Collect(way)))/500000)
+			WHEN ST_NPoints(ST_Collect(way)) BETWEEN 20000 AND 40000 THEN ST_SimplifyPreserveTopology(ST_Collect(way),(ST_Perimeter(ST_Collect(way))+ST_Length(ST_Collect(way)))/200000)
+			WHEN ST_NPoints(ST_Collect(way)) BETWEEN 40000 AND 60000 THEN ST_SimplifyPreserveTopology(ST_Collect(way),(ST_Perimeter(ST_Collect(way))+ST_Length(ST_Collect(way)))/150000)
+			ELSE ST_SimplifyPreserveTopology(ST_Collect(way),(ST_Perimeter(ST_Collect(way))+ST_Length(ST_Collect(way)))/100000)
 		END
 	,9) AS geojson';
 
@@ -33,7 +35,7 @@ class Wiwosm {
 		//$this->conn = pg_connect('host=localhost port=5432 dbname=osm user=master');
 		// check for connection error
 		if($e = pg_last_error()) trigger_error($e, E_USER_ERROR);
-		pg_set_client_encoding($this->conn, UNICODE);
+		//pg_set_client_encoding($this->conn, UNICODE);
 	}
 
 	/**
