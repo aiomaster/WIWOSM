@@ -102,13 +102,13 @@ regexp_replace(
       ':',
       regexp_replace(
         tags->substring(array_to_string(akeys(tags),',') from '[^,]*wikipedia:?[^,]*'), -- get the first wikipedia tag from hstore
-        '^https?://(\w*)\.wikipedia\.org/wiki/(.*)$', -- matches if the value is a wikipedia url (otherwise it is an article)
-        '\1:\2' -- get the domain prefix and use it as language key followed by the article name
+        '^https?://(\\w*)\\.wikipedia\\.org/wiki/(.*)$', -- matches if the value is a wikipedia url (otherwise it is an article)
+        '\\1:\\2' -- get the domain prefix and use it as language key followed by the article name
       )
     ) -- resulting string is for example wikipedia:de:Dresden
     from 11 -- remove the "wikipedia:" prefix
   ),
-  '^(\w*:)\1','\1' -- it is possible that there is such a thing like "de:de:Artikel" left if there was a tag like "wikipedia:de=http://de.wikipedia.org/wiki/Artikel", so remove double language labels
+  '^(\\w*:)\\1','\\1' -- it is possible that there is such a thing like "de:de:Artikel" left if there was a tag like "wikipedia:de=http://de.wikipedia.org/wiki/Artikel", so remove double language labels
 ) AS "wikipedia"
 FROM (
 ( SELECT osm_id, tags, way FROM planet_point WHERE strpos(array_to_string(akeys(tags),','),'wikipedia')>0 )
