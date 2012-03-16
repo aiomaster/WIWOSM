@@ -138,9 +138,12 @@ EOQ;
 	}
 
 
-	function createlinks($lang, $article, $geojson, &$lastlang = '') {
+	function createlinks($lang, $article, $geojson, $neednoIWLLupdate = false, &$lastlang = '') {
 		// for every osm object with a valid wikipedia-tag print the geojson to file
 		$filepath = $this->getFilePath($lang,$article);
+
+		// we need no update of the Interwiki language links if it is given by parameter and the file exists already
+		$neednoIWLLupdate &= file_exists($filepath);
 
 		$handle = gzopen($filepath,'w');
 		gzwrite($handle,$geojson);
@@ -150,6 +153,9 @@ EOQ;
 		fwrite($handle,$row['geojson']);
 		fclose($handle);
 		*/
+
+		// check if we need an update of the Interwiki language links
+		if ($neednoIWLLupdate) return true;
 
 		// just do a new connection if we get another lang than in loop before
 		if ($lastlang!=$lang) {
@@ -195,7 +201,7 @@ EOQ;
 
 		if ($result && pg_num_rows($result) == 1 ) {
 			$row = pg_fetch_assoc($result);
-			$this->createlinks($lang, $article, $row['geojson']);
+			$this->createlinks($lang, $article, $row['geojson'],true);
 		}
 	}
 
@@ -235,7 +241,7 @@ EOQ;
 				//if(!in_array($row['lang'],$alllang)) continue;
 				if ($skiplang && $lastlang==$row['lang']) continue;
 
-				$skiplang = !$this->createlinks($row['lang'], stripcslashes(urldecode($row['article'])), $row['geojson'], $lastlang);
+				$skiplang = !$this->createlinks($row['lang'], stripcslashes(urldecode($row['article'])), $row['geojson'], false, $lastlang);
 				// free the memory
 				unset($row);
 			}
