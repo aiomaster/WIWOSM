@@ -188,11 +188,13 @@ EOQ;
 
 	function updateOneObject($lang,$article) {
 		$a = str_replace('"','\\\\"',pg_escape_string($article));
+		$aurl = urlencode(str_replace(' ','_',$a));
 		$l = str_replace('"','\\\\"',pg_escape_string($lang));
+		$articlefilter = '(tags @> E\'"wikipedia:'.$l.'"=>"'.$a.'"\') OR (tags @> E\'"wikipedia"=>"'.$l.':'.$a.'"\') OR (tags @> E\'"wikipedia"=>"http://'.$l.'.wikipedia.org/wiki/'.$aurl.'"\') OR (tags @> E\'"wikipedia"=>"https://'.$l.'.wikipedia.org/wiki/'.$aurl.'"\') OR (tags @> E\'"wikipedia:'.$l.'"=>"http://'.$l.'.wikipedia.org/wiki/'.$aurl.'"\') OR (tags @> E\'"wikipedia:'.$l.'"=>"https://'.$l.'.wikipedia.org/wiki/'.$aurl.'"\')';
 		$sql = 'SELECT '.self::simplifyGeoJSON.' FROM (
-			( SELECT way FROM planet_polygon WHERE (tags @> E\'"wikipedia:'.$l.'"=>"'.$a.'"\') OR (tags @> E\'"wikipedia"=>"'.$l.':'.$a.'"\') )
-			UNION ( SELECT way FROM planet_line WHERE ( (tags @> E\'"wikipedia:'.$l.'"=>"'.$a.'"\') OR (tags @> E\'"wikipedia"=>"'.$l.':'.$a.'"\') ) AND NOT EXISTS (SELECT 1 FROM planet_polygon WHERE planet_polygon.osm_id = planet_line.osm_id) )
-			UNION ( SELECT way FROM planet_point WHERE (tags @> E\'"wikipedia:'.$l.'"=>"'.$a.'"\') OR (tags @> E\'"wikipedia"=>"'.$l.':'.$a.'"\') )
+			( SELECT way FROM planet_polygon WHERE '.$articlefilter.' )
+			UNION ( SELECT way FROM planet_line WHERE ( '.$articlefilter.' ) AND NOT EXISTS (SELECT 1 FROM planet_polygon WHERE planet_polygon.osm_id = planet_line.osm_id) )
+			UNION ( SELECT way FROM planet_point WHERE '.$articlefilter.' )
 			) AS wikistaff
 			';
 
