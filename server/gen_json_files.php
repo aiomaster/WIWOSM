@@ -7,13 +7,15 @@ error_reporting(E_ERROR);
 ini_set('display_errors', true);
 ini_set('html_errors', false);
 
+$fullupdate = ($argc > 1) && ($argv[1] == 'full');
+
 $wiwosm = new Wiwosm();
 
-$wiwosm->json_path .= '_update';
+if ($fullupdate) $wiwosm->json_path .= '_update';
 
 $wiwosm->updateWiwosmDB();
 $wiwosm->processOsmItems();
-$wiwosm->testAndRename();
+if ($fullupdate) $wiwosm->testAndRename();
 $wiwosm->exithandler();
 }
 

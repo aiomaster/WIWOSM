@@ -58,7 +58,7 @@ class Wiwosm {
 		// use fnvhash because its much faster than md5
 		$hash = $this->fnvhash($lang.str_replace('_',' ',$article));
 		$path = $this->json_path.'/'.substr($hash,0,2).'/'.substr($hash,0,4);
-		mkdir($path, 0755, true);
+		if (!file_exists($path)) mkdir($path, 0755, true);
 		$path .= '/'.$hash.'.geojson.gz';
 		unset($hash);
 		return $path;
@@ -70,7 +70,7 @@ class Wiwosm {
 
 	function testAndRename() {
 		//$countFiles = system('ls -RU1 --color=never '.$json_path.' | wc -l');
-
+		echo 'Execution time: '.((microtime(true)-$this->start)/60)."min\n";
 		echo 'Counting generated files …'."\n";
 		$countFiles = system('find '.$this->json_path.' -type f | wc -l');
 		// if there are more than 100000
@@ -84,6 +84,7 @@ class Wiwosm {
 
 	function exithandler() {
 		echo 'Execution time: '.((microtime(true)-$this->start)/60)."min\n";
+		echo 'Peak memory usage: '.(memory_get_peak_usage(true)/1024/1024)."MB\n";
 		pg_close($this->conn);
 		exit;
 	}
@@ -243,7 +244,7 @@ EOQ;
 				//if(!in_array($row['lang'],$alllang)) continue;
 				if ($skiplang && $lastlang==$row['lang']) continue;
 
-				$skiplang = !$this->createlinks($row['lang'], stripcslashes(urldecode($row['article'])), $row['geojson'], false, $lastlang);
+				$skiplang = !$this->createlinks($row['lang'], stripcslashes(urldecode($row['article'])), $row['geojson'], true, $lastlang);
 				// free the memory
 				unset($row);
 			}
