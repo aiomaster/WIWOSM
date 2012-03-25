@@ -15,7 +15,7 @@ class Wiwosm {
 		END
 	,9) AS geojson';
 
-	const JSON_PATH = '/mnt/user-store/master/geojsongz';
+	const JSON_PATH = '/mnt/user-store/wiwosm/geojsongz';
 	var $json_path;
 
 	private $conn;
