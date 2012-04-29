@@ -59,7 +59,7 @@ class Wiwosm {
 		$hash = $this->fnvhash($lang.str_replace('_',' ',$article));
 		$path = $this->json_path.'/'.substr($hash,0,2).'/'.substr($hash,0,4);
 		if (!file_exists($path)) mkdir($path, 0755, true);
-		$path .= '/'.$hash.'.geojson.gz';
+		$path .= '/'.$hash.'_'.substr(str_replace(array("\0",'/'),array('','-'),$lang.'_'.$article),0,240).'.geojson.gz';
 		unset($hash);
 		return $path;
 	}
