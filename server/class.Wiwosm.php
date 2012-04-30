@@ -56,10 +56,11 @@ class Wiwosm {
 	function getFilePath($lang, $article) {
 		//$hash = md5($lang.str_replace('_',' ',$article));
 		// use fnvhash because its much faster than md5
-		$hash = $this->fnvhash($lang.str_replace('_',' ',$article));
+		$article = str_replace('_',' ',$article);
+		$hash = $this->fnvhash($lang.$article);
 		$path = $this->json_path.'/'.substr($hash,0,2).'/'.substr($hash,0,4);
 		if (!file_exists($path)) mkdir($path, 0755, true);
-		$path .= '/'.$hash.'_'.substr(str_replace(array("\0",'/'),array('','-'),$lang.'_'.$article),0,240).'.geojson.gz';
+		$path .= '/'.$hash.'_'.substr(str_replace(array("\0",'/'),array('','-'),$lang.'_'.$article),0,230).'.geojson.gz';
 		unset($hash);
 		return $path;
 	}
