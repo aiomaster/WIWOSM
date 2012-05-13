@@ -20,10 +20,14 @@ if ($_GET['action']=='purge' && $article && $lang) {
 
 $file = $wiwosm->getFilePath($lang,$article);
 if (file_exists($file)) {
-	header('Content-Encoding: gzip');
-	readfile($file);
+	if ($_GET['action']=='check') {
+		echo 1;
+	} else {
+		header('Content-Encoding: gzip');
+		readfile($file);
+	}
 } else {
-	header("HTTP/1.0 404 Not Found");
+	echo 0;
 }
 
 ?>
