@@ -16,7 +16,7 @@ class Wiwosm {
 	,9) AS geojson';
 
 	const JSON_PATH = '/mnt/user-store/wiwosm/geojsongz';
-	var $json_path;
+	public $json_path;
 
 	private $conn;
 
@@ -90,6 +90,14 @@ class Wiwosm {
 		exit;
 	}
 
+	function createIndices() {
+$query = <<<EOQ
+CREATE INDEX geom_index ON wiwosm USING GIST ( way ); -- geometry index
+CREATE INDEX article_lang_index ON wiwosm (article, lang ASC); -- index on articles and languages
+EOQ;
+		pg_query($this->conn,$query);
+	}
+
 	function updateWiwosmDB() {
 $query = <<<EOQ
 BEGIN;
@@ -125,8 +133,6 @@ ORDER BY article,lang ASC
 ALTER TABLE wiwosm OWNER TO master;
 GRANT ALL ON TABLE wiwosm TO master;
 GRANT SELECT ON TABLE wiwosm TO public;
-CREATE INDEX geom_index ON wiwosm USING GIST ( way ); -- geometry index
-CREATE INDEX article_lang_index ON wiwosm (article, lang ASC); -- index on articles and languages
 COMMIT;
 EOQ;
 
@@ -135,10 +141,132 @@ EOQ;
 			trigger_error($e, E_USER_ERROR);
 			$this->exithandler();
 		} else {
+			echo 'wiwosm DB basic table build in '.((microtime(true)-$this->start)/60)." min\nStarting additional relation adding …\n";
+			$this->addMissingRelationObjects();
+			$this->createIndices();
 			echo 'wiwosm DB upgraded in '.((microtime(true)-$this->start)/60)." min\n";
 		}
 	}
 
+	function getAllMembers($memberscsv,&$nodelist,&$waylist,&$rellist) {
+		$subrellist = array();
+		$members = str_getcsv($memberscsv,',','"');
+		for($i=0; $i<count($members); $i+=2) {
+			$id = substr($members[$i],1);
+			switch ($members[$i][0]) {
+				case 'n':
+					$nodelist[] = $id;
+					break;
+				case 'w':
+					$waylist[] = $id;
+					break;
+				case 'r':
+					$subrellist[] = $id;
+					break;
+			}
+		}
+
+		$newrels = array_diff($subrellist,$rellist);
+		// if there are relations we havn't seen before
+		if (count($newrels)>0) {
+			$newrelscomplement = array();
+			foreach ($newrels AS $rel) {
+				$newrelscomplement[] = '-'.$rel;
+				$rellist[] = $rel;
+			}
+
+			$newrelscsv = implode(',',$newrelscomplement);
+			// search for existing relations that are build in osm2pgsql default scheme
+			$query = 'SELECT DISTINCT osm_id FROM (
+							(SELECT osm_id FROM planet_point WHERE osm_id IN ('.$newrelscsv.'))
+							UNION (SELECT osm_id FROM planet_line WHERE osm_id IN ('.$newrelscsv.'))
+							UNION (SELECT osm_id FROM planet_polygon WHERE osm_id IN ('.$newrelscsv.'))
+						) AS existing';
+			$result = pg_query($this->conn,$query);
+			$existingrels = ($result) ? pg_fetch_all_columns($result, 0) : array();
+			// we can simply add the existing relations with there negative id as if they were nodes or ways
+			$nodelist = array_merge($nodelist,$existingrels);
+			$waylist = array_merge($waylist,$existingrels);
+
+			// all other relations we have to pick from the planet_rels table
+			$othersubrels = array_diff($newrelscomplement,$existingrels);
+			if (count($othersubrels)>0) {
+				$othersubrelscsv = '';
+				// first strip of the "-" and build csv
+				foreach($othersubrels AS $subrel) {
+					$othersubrelscsv .= ','.substr($subrel,1);
+				}
+				$othersubrelscsv = substr($othersubrelscsv,1);
+				$res = pg_query($this->conn,'SELECT members FROM planet_rels WHERE id IN ('.$othersubrelscsv.')');
+				if ($res) {
+					// fetch all members of all subrelations and combine them to one csv string
+					$allsubmembers = pg_fetch_all_columns($res, 0);
+					$allsubmemberscsv = '';
+					foreach($allsubmembers AS $submem) {
+						// if submembers exist add them to csv
+						if ($submem) $allsubmemberscsv .= ','.substr($submem,1,-1);
+					}
+					// call this function again to process all subrelations and add them to the arrays
+					$this->getAllMembers(substr($allsubmemberscsv,1),$nodelist,$waylist,$rellist);
+				}
+			}
+		}
+	}
+
+	function addMissingRelationObjects() {
+		$query = "SELECT id,members,tags FROM planet_rels WHERE strpos(array_to_string(tags,','),'wikipedia')>0 AND -id NOT IN ( SELECT osm_id FROM wiwosm WHERE osm_id<0 )";
+		//$query = "SELECT id,members,tags FROM planet_rels WHERE id = 395276";
+		$result = pg_query($this->conn,$query);
+		while ($row = pg_fetch_assoc($result)) {
+			// if the relation has no members ignore it and try the next one
+			if (!$row['members']) continue;
+			$lang = '';
+			$article = '';
+			$anchor = '';
+			$tagscsv = str_getcsv(substr($row['tags'],1,-1),',','"');
+			for($i=0; $i<count($tagscsv); $i+=2) {
+				$key = $tagscsv[$i];
+				if (substr($key,0,9) == 'wikipedia') {
+					$wiki = preg_replace('/^([^:]*:){2}/','${1}',substr($key.':'.preg_replace('#^https?://(\w*)\.wikipedia\.org/wiki/(.*)$#','${1}:${2}',urldecode($tagscsv[$i+1])),10));
+					$pos = strpos($wiki,':');
+					if ($pos !== false) {
+						$lang = substr($wiki,0,$pos);
+						$rest = substr($wiki,$pos+1);
+						$posanchor = strpos($rest,'#');
+						if ($posanchor === false) {
+							$article = $rest;
+						} else {
+							$article = substr($rest,0,$posanchor);
+							$anchor = substr($rest,$posanchor+1);
+						}
+
+						$nodelist = array();
+						$waylist = array();
+						$rellist = array($row['id']);
+						$this->getAllMembers(substr($row['members'],1,-1),$nodelist,$waylist,$rellist);
+						$nodelist = array_unique($nodelist);
+						$waylist = array_unique($waylist);
+						$nodescsv = implode(',',$nodelist);
+						$wayscsv = implode(',',$waylist);
+						$hasNodes = (count($nodelist)>0);
+						$hasWays = (count($waylist)>0);
+						if ($hasNodes || $hasWays) {
+							$insertquery = 'INSERT INTO wiwosm SELECT \'-'.$row['id'].'\' AS osm_id, ST_Collect(way) AS way , \''.pg_escape_string($lang).'\' AS lang, \''.pg_escape_string($article).'\' AS article, \''.pg_escape_string($anchor).'\' AS anchor FROM ('.
+								(($hasWays) ? '(SELECT way FROM planet_polygon WHERE osm_id IN ('.$wayscsv.') )
+								UNION ( SELECT way FROM planet_line WHERE osm_id IN ('.$wayscsv.') AND NOT EXISTS (SELECT 1 FROM planet_polygon WHERE planet_polygon.osm_id = planet_line.osm_id) )' .
+								(($hasNodes) ? ' UNION ' : '') : '' ) .
+								(($hasNodes) ? '(SELECT way FROM planet_point WHERE osm_id IN ('.$nodescsv.') )' : '' ) .
+								') AS members';
+							pg_query($this->conn,$insertquery);
+						}
+						// found a wikipedia tag so stop looping the tags
+						break;
+					}
+
+				}
+			} 
+		}
+	}
 
 	function createlinks($lang, $article, $geojson, $neednoIWLLupdate = false, &$lastlang = '') {
 		// for every osm object with a valid wikipedia-tag print the geojson to file
@@ -210,7 +338,7 @@ EOQ;
 	}
 
 	function processOsmItems() {
-		$sql = '( SELECT lang,article,'.self::simplifyGeoJSON.' FROM  wiwosm WHERE lang != \'http\' AND article != \'http\' GROUP BY lang,article ORDER BY lang )';
+		$sql = '( SELECT lang,article,'.self::simplifyGeoJSON.' FROM  wiwosm WHERE GeometryType(way) != \'GEOMETRYCOLLECTION\' AND lang != \'http\' AND article != \'http\' GROUP BY lang,article ORDER BY lang )';
 
 		// this consumes just too mutch memory:
 		/*
