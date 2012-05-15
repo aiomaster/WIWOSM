@@ -27,7 +27,11 @@ if (file_exists($file)) {
 		readfile($file);
 	}
 } else {
-	echo 0;
+	if ($_GET['action']=='check') {
+		echo 0;
+	} else {
+		header("HTTP/1.0 404 Not Found");
+	}
 }
 
 ?>
