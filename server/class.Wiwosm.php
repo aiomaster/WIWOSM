@@ -338,7 +338,8 @@ EOQ;
 	}
 
 	function processOsmItems() {
-		$sql = '( SELECT lang,article,'.self::simplifyGeoJSON.' FROM  wiwosm WHERE GeometryType(way) != \'GEOMETRYCOLLECTION\' AND lang != \'http\' AND article != \'http\' GROUP BY lang,article ORDER BY lang )';
+		// to avoid problems with geometrycollections first dump all geometries and collect them again
+		$sql = '( SELECT lang,article,'.self::simplifyGeoJSON.' FROM  (SELECT lang,article,(ST_Dump(way)).geom AS way FROM wiwosm WHERE lang != \'http\' AND article != \'http\' ) AS geomdump GROUP BY lang,article ORDER BY lang )';
 
 		// this consumes just too mutch memory:
 		/*
