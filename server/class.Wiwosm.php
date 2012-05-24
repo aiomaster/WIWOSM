@@ -103,7 +103,7 @@ $query = <<<EOQ
 BEGIN;
 DROP TABLE IF EXISTS wiwosm;
 CREATE TABLE wiwosm AS (
-SELECT osm_id, way, split_part(wikipedia, ':', 1) AS lang, split_part(split_part(wikipedia, ':', 2),'#', 1) AS article, split_part(wikipedia,'#', 2) AS anchor FROM (
+SELECT osm_id, way, lower(split_part(wikipedia, ':', 1)) AS lang, split_part(substring(wikipedia from position(':' in wikipedia)+1),'#', 1) AS article, split_part(wikipedia,'#', 2) AS anchor FROM (
 SELECT osm_id, way,
 regexp_replace(
   substring(
@@ -130,6 +130,7 @@ WHERE strpos(wikipedia,':')>0 -- remove tags with no language defined for exampl
 ORDER BY article,lang ASC
 )
 ;
+ALTER TABLE wiwosm ADD COLUMN lang_ref integer;
 ALTER TABLE wiwosm OWNER TO master;
 GRANT ALL ON TABLE wiwosm TO master;
 GRANT SELECT ON TABLE wiwosm TO public;
@@ -230,7 +231,7 @@ EOQ;
 					$wiki = preg_replace('/^([^:]*:){2}/','${1}',substr($key.':'.preg_replace('#^https?://(\w*)\.wikipedia\.org/wiki/(.*)$#','${1}:${2}',urldecode($tagscsv[$i+1])),10));
 					$pos = strpos($wiki,':');
 					if ($pos !== false) {
-						$lang = substr($wiki,0,$pos);
+						$lang = strtolower(substr($wiki,0,$pos));
 						$rest = substr($wiki,$pos+1);
 						$posanchor = strpos($rest,'#');
 						if ($posanchor === false) {
