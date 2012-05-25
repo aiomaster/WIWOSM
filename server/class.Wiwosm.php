@@ -22,6 +22,8 @@ class Wiwosm {
 
 	private $start;
 
+	private $lastlang;
+
 	function __construct() {
 		$this->start = microtime(true);
 		$this->json_path = self::JSON_PATH;
@@ -32,7 +34,6 @@ class Wiwosm {
 	function openPgConnection() {
 		// open psql connection
 		$this->conn = pg_connect('host=sql-mapnik dbname=osm_mapnik');
-		//$this->conn = pg_connect('host=localhost port=5432 dbname=osm user=master');
 		// check for connection error
 		if($e = pg_last_error()) trigger_error($e, E_USER_ERROR);
 		//pg_set_client_encoding($this->conn, UNICODE);
@@ -59,7 +60,7 @@ class Wiwosm {
 		$article = str_replace('_',' ',$article);
 		$hash = $this->fnvhash($lang.$article);
 		$path = $this->json_path.'/'.substr($hash,0,2).'/'.substr($hash,0,4);
-		if (!file_exists($path)) mkdir($path, 0755, true);
+		if (!file_exists($path)) @mkdir($path, 0755, true);
 		$path .= '/'.$hash.'_'.substr(str_replace(array("\0",'/'),array('','-'),$lang.'_'.$article),0,230).'.geojson.gz';
 		unset($hash);
 		return $path;
@@ -145,6 +146,7 @@ EOQ;
 			echo 'wiwosm DB basic table build in '.((microtime(true)-$this->start)/60)." min\nStarting additional relation adding …\n";
 			$this->addMissingRelationObjects();
 			$this->createIndices();
+			$this->linkarticlelanguages();
 			echo 'wiwosm DB upgraded in '.((microtime(true)-$this->start)/60)." min\n";
 		}
 	}
@@ -177,13 +179,8 @@ EOQ;
 			}
 
 			$newrelscsv = implode(',',$newrelscomplement);
-			// search for existing relations that are build in osm2pgsql default scheme
-			$query = 'SELECT DISTINCT osm_id FROM (
-							(SELECT osm_id FROM planet_point WHERE osm_id IN ('.$newrelscsv.'))
-							UNION (SELECT osm_id FROM planet_line WHERE osm_id IN ('.$newrelscsv.'))
-							UNION (SELECT osm_id FROM planet_polygon WHERE osm_id IN ('.$newrelscsv.'))
-						) AS existing';
-			$result = pg_query($this->conn,$query);
+
+			$result = pg_execute($this->conn,'get_existing_member_relations',array('{'.$newrelscsv.'}'));
 			$existingrels = ($result) ? pg_fetch_all_columns($result, 0) : array();
 			// we can simply add the existing relations with there negative id as if they were nodes or ways
 			$nodelist = array_merge($nodelist,$existingrels);
@@ -198,7 +195,8 @@ EOQ;
 					$othersubrelscsv .= ','.substr($subrel,1);
 				}
 				$othersubrelscsv = substr($othersubrelscsv,1);
-				$res = pg_query($this->conn,'SELECT members FROM planet_rels WHERE id IN ('.$othersubrelscsv.')');
+
+				$res = pg_execute($this->conn,'get_member_relations_planet_rels',array('{'.$othersubrelscsv.'}'));
 				if ($res) {
 					// fetch all members of all subrelations and combine them to one csv string
 					$allsubmembers = pg_fetch_all_columns($res, 0);
@@ -215,8 +213,34 @@ EOQ;
 	}
 
 	function addMissingRelationObjects() {
+		// prepare some often used queries:
+
+		// search for existing relations that are build in osm2pgsql default scheme ( executed in getAllMembers function!)
+		$result = pg_prepare($this->conn,'get_existing_member_relations','SELECT DISTINCT osm_id FROM (
+			(SELECT osm_id FROM planet_point WHERE osm_id = ANY ($1))
+			UNION (SELECT osm_id FROM planet_line WHERE osm_id = ANY ($1))
+			UNION (SELECT osm_id FROM planet_polygon WHERE osm_id = ANY ($1))
+		) AS existing');
+		if ($result === false) $this->exithandler();
+
+		// fetch all members of all subrelations and combine them to one csv string ( executed in getAllMembers function!)
+		$result = pg_prepare($this->conn,'get_member_relations_planet_rels','SELECT members FROM planet_rels WHERE id = ANY ($1)');
+		if ($result === false) $this->exithandler();
+
+		// insert ways and polygons in wiwosm
+		$result = pg_prepare($this->conn,'insert_relways_wiwosm','INSERT INTO wiwosm SELECT $1 AS osm_id, ST_Collect(way) AS way , $2 AS lang, $3 AS article, $4 AS anchor FROM (
+			(SELECT way FROM planet_polygon WHERE osm_id = ANY ($5) )
+			UNION ( SELECT way FROM planet_line WHERE osm_id = ANY ($5) AND NOT EXISTS (SELECT 1 FROM planet_polygon WHERE planet_polygon.osm_id = planet_line.osm_id) )
+			) AS members');
+		if ($result === false) $this->exithandler();
+
+		// insert nodes in wiwosm
+		$result = pg_prepare($this->conn,'insert_relnodes_wiwosm','INSERT INTO wiwosm SELECT $1 AS osm_id, ST_Collect(way) AS way , $2 AS lang, $3 AS article, $4 AS anchor FROM (
+			(SELECT way FROM planet_point WHERE osm_id = ANY ($5) )
+			) AS members');
+		if ($result === false) $this->exithandler();
+
 		$query = "SELECT id,members,tags FROM planet_rels WHERE strpos(array_to_string(tags,','),'wikipedia')>0 AND -id NOT IN ( SELECT osm_id FROM wiwosm WHERE osm_id<0 )";
-		//$query = "SELECT id,members,tags FROM planet_rels WHERE id = 395276";
 		$result = pg_query($this->conn,$query);
 		while ($row = pg_fetch_assoc($result)) {
 			// if the relation has no members ignore it and try the next one
@@ -251,15 +275,13 @@ EOQ;
 						$wayscsv = implode(',',$waylist);
 						$hasNodes = (count($nodelist)>0);
 						$hasWays = (count($waylist)>0);
-						if ($hasNodes || $hasWays) {
-							$insertquery = 'INSERT INTO wiwosm SELECT \'-'.$row['id'].'\' AS osm_id, ST_Collect(way) AS way , \''.pg_escape_string($lang).'\' AS lang, \''.pg_escape_string($article).'\' AS article, \''.pg_escape_string($anchor).'\' AS anchor FROM ('.
-								(($hasWays) ? '(SELECT way FROM planet_polygon WHERE osm_id IN ('.$wayscsv.') )
-								UNION ( SELECT way FROM planet_line WHERE osm_id IN ('.$wayscsv.') AND NOT EXISTS (SELECT 1 FROM planet_polygon WHERE planet_polygon.osm_id = planet_line.osm_id) )' .
-								(($hasNodes) ? ' UNION ' : '') : '' ) .
-								(($hasNodes) ? '(SELECT way FROM planet_point WHERE osm_id IN ('.$nodescsv.') )' : '' ) .
-								') AS members';
-							pg_query($this->conn,$insertquery);
+						if ($hasWays) {
+							pg_execute($this->conn,'insert_relways_wiwosm',array('-'.$row['id'],$lang,$article,$anchor,'{'.$wayscsv.'}'));
 						}
+						if ($hasNodes) {
+							pg_execute($this->conn,'insert_relnodes_wiwosm',array('-'.$row['id'],$lang,$article,$anchor,'{'.$nodescsv.'}'));
+						}
+
 						// found a wikipedia tag so stop looping the tags
 						break;
 					}
@@ -269,29 +291,46 @@ EOQ;
 		}
 	}
 
-	function createlinks($lang, $article, $geojson, $neednoIWLLupdate = false, &$lastlang = '') {
-		// for every osm object with a valid wikipedia-tag print the geojson to file
-		$filepath = $this->getFilePath($lang,$article);
+	public static function hstoreToArray($hstore) {
+		$ret_array = array();
+		echo $hstore."\n";
+		if (preg_match_all('/(?:^| )"((?:[^"]|(?<=\\\\)")*)"=>"((?:[^"]|(?<=\\\\)")*)"(?:$|,)/',$hstore,$matches)) {
+			$count = count($matches[1]);
+			if ($count == count($matches[2])) {
+				for($i=0; $i<$count; $i++) {
+					$lang = stripslashes($matches[1][$i]);
+					$article = stripslashes($matches[2][$i]);
+					$ret_array[$lang] = $article;
+				}
+			}
+		}
+		return $ret_array;
+	}
 
-		// we need no update of the Interwiki language links if it is given by parameter and the file exists already
-		$neednoIWLLupdate &= file_exists($filepath);
+	public static function fixUTF8($str) {
+		$curenc = mb_detect_encoding($str);
+		if ($curenc != 'UTF-8') {
+			if ($curenc === false) {
+				// if mb_detect_encoding failed we have to enforce clean UTF8 somehow
+				return mb_convert_encoding(utf8_encode($str), 'UTF-8', 'UTF-8');
+			}
+			// if we can guess the encoding we can convert it
+			return mb_convert_encoding($str,'UTF-8',$curenc);
+		} elseif (!mb_check_encoding($str,'UTF-8')) {
+			// if there are invalid bytes try to remove them
+			return mb_convert_encoding($str, 'UTF-8', 'UTF-8');
+		}
+		// if it is already clean UTF-8 there should be no problems
+		return $str;
+	}
 
-		$handle = gzopen($filepath,'w');
-		gzwrite($handle,$geojson);
-		gzclose($handle);
-		/*
-		$handle = fopen($filepath,'w');
-		fwrite($handle,$row['geojson']);
-		fclose($handle);
-		*/
-
-		// check if we need an update of the Interwiki language links
-		if ($neednoIWLLupdate) return true;
-
+	function queryInterWikiLanguages($lang, $article) {
+		// if no lang or article is given, we can stop here
+		if (!$lang || !$article) return false;
 		// just do a new connection if we get another lang than in loop before
-		if ($lastlang!=$lang) {
+		if ($this->lastlang!=$lang) {
 			echo 'Try new lang:'.$lang."\n";
-			$lastlang=$lang;
+			$this->lastlang=$lang;
 			mysql_close();
 			$db = mysql_connect($lang. 'wiki-p.db.toolserver.org', $this->toolserver_mycnf['user'], $this->toolserver_mycnf['password']); 
 			if (!$db || !mysql_select_db($lang. 'wiki_p')) {
@@ -303,13 +342,134 @@ EOQ;
 		}
 		$mysql = 'SELECT `ll_lang`,`ll_title` FROM `'.$lang.'wiki_p`.`langlinks` WHERE `ll_from` =(SELECT `page_id` FROM `'.$lang."wiki_p`.`page` WHERE `page_namespace`=0 AND `page_is_redirect`=0 AND `page_title` = '".str_replace(array(' ','\''),array('_','\\\''),$article)."' LIMIT 1) LIMIT 300; ";
 
-		$langres = mysql_query($mysql); 
+		$langarray = array();
+		$langres = mysql_query($mysql);
+		if ($langres !== false) {
+			while ($langrow = mysql_fetch_assoc($langres)) {
+				$langarray[$langrow['ll_lang']] = str_replace('_',' ',$langrow['ll_title']);
+			}
+		}
+		return $langarray;
+	}
+
+	function escape($str) {
+		return str_replace(array('\\','"'),array('\\\\','\\"'),$str);
+	}
+
+	function linkarticlelanguages() {
+		$query = "SELECT lang,article FROM wiwosm ORDER BY lang,article";
+
+		// lets update every row and use a cursor for that
+		if (!pg_query($this->conn,'BEGIN WORK') || !pg_query($this->conn,'DECLARE updatelangcur NO SCROLL CURSOR FOR '.$query.' FOR UPDATE OF wiwosm')) {
+			echo 'Could not declare cursor for updating language refs'. "\n" . pg_last_error() . "\n";
+			$this->exithandler();
+		}
+
+		$langbefore = '';
+		$articlebefore = '';
+
+		// prepare some sql queries that are used very often:
+
+		// this is to search for an entry in wiwosm_wiki_ll table by given article and language
+		$result = pg_prepare($this->conn,'get_lang_id','SELECT lang_id FROM wiwosm_wiki_ll WHERE languages @> $1::hstore');
+		if ($result === false) $this->exithandler();
+
+		// insert a new line in wiwosm_wiki_ll. We have to give the datatype for the text[][] explicit here so we can't use pg_prepare
+		$result = pg_query($this->conn,'PREPARE insert_wiwosm_wiki_ll (text,text,text[][]) AS INSERT INTO wiwosm_wiki_ll (lang_id,lang_origin,article_origin,languages) VALUES (DEFAULT,$1,$2,hstore($3)) RETURNING lang_id');
+		if ($result === false) $this->exithandler();
+
+		// update the lang_ref column in wiwosm table by using the current row from updatelangcur cursor
+		$result = pg_prepare($this->conn,'update_wiwosm_lang_ref','UPDATE wiwosm SET lang_ref=$1 WHERE CURRENT OF updatelangcur');
+		if ($result === false) $this->exithandler();
+
+		$result = pg_prepare($this->conn,'fetch_next_updatelangcur','FETCH NEXT FROM updatelangcur');
+		if ($result === false) $this->exithandler();
+		$result = pg_execute($this->conn,'fetch_next_updatelangcur',array());
+		$fetchcount = pg_num_rows($result);
+
+		while ($fetchcount == 1) {
+			$row = pg_fetch_assoc($result);
+			$article = str_replace('_',' ',stripcslashes(self::fixUTF8(urldecode($row['article']))));
+			$lang = $row['lang'];
+			if ($langbefore !== $lang || $articlebefore !== $article) {
+				$langbefore = $lang;
+				$articlebefore = $article;
+				$lang_id = '-1';
+				$params = array('"'.$this->escape($lang).'"=>"'.$this->escape($article).'"');
+				$result = pg_execute($this->conn,'get_lang_id',$params);
+				if ($result && pg_num_rows($result) == 1) {
+					// if we found an entry in our wiwosm_wiki_ll table we use that id to link
+					$lang_id = pg_fetch_result($result,0,0);
+				} else {
+					// if there was no such entry we have to query the interwikilinks mysql db
+					$langarray = $this->queryInterWikiLanguages($lang,$article);
+					if ($langarray !== false) {
+						$langarray[$lang] = $article;
+						$hstorestring = '{';
+						foreach ($langarray as $l => $a) {
+							$hstorestring .= '{"'.$this->escape($l).'","'.$this->escape($a).'"},';
+						}
+						$hstorestring = rtrim($hstorestring,',').'}';
+						$idres = pg_execute($this->conn,'insert_wiwosm_wiki_ll',array($lang,$article,$hstorestring));
+						if ($idres && pg_num_rows($idres) == 1 ) {
+							$lang_id = pg_fetch_result($idres,0,0);
+						}
+					}
+				}
+			}
+			pg_execute($this->conn,'update_wiwosm_lang_ref',array($lang_id));
+			if ($result === false) $this->exithandler();
+			$result = pg_execute($this->conn,'fetch_next_updatelangcur',array());
+			$fetchcount = pg_num_rows($result);
+		}
+		pg_query($this->conn,'CLOSE updatelangcur');
+		pg_query($this->conn,'COMMIT WORK');
+	}
+
+	function createLangTable() {
+		$query = <<<EOQ
+BEGIN;
+DROP TABLE IF EXISTS wiwosm_wiki_ll;
+CREATE TABLE wiwosm_wiki_ll (
+	lang_id serial PRIMARY KEY,
+	lang_origin text,
+	article_origin text,
+	languages hstore
+)
+;
+ALTER TABLE wiwosm_wiki_ll OWNER TO master;
+GRANT ALL ON TABLE wiwosm_wiki_ll TO master;
+GRANT SELECT ON TABLE wiwosm_wiki_ll TO public;
+CREATE INDEX languages_idx ON wiwosm_wiki_ll USING GIST (languages);
+COMMIT;
+EOQ;
+		pg_query($this->conn,$query);
+	}
+
+
+	function createlinks($lang, $article, $geojson, $langarray = array(), $neednoIWLLupdate = false) {
+		// for every osm object with a valid wikipedia-tag print the geojson to file
+		$filepath = $this->getFilePath($lang,$article);
+
+		// we need no update of the Interwiki language links if it is given by parameter and the file exists already
+		$neednoIWLLupdate &= file_exists($filepath);
+
+		$handle = gzopen($filepath,'w');
+		gzwrite($handle,$geojson);
+		gzclose($handle);
+
+		// check if we need an update of the Interwiki language links
+		if ($neednoIWLLupdate) return true;
+
+		//$langarray = $this->queryInterWikiLanguages($lang,$article);
 		// for every interwikilink do a hard link to the real file written above
-		while ($langrow = mysql_fetch_assoc($langres)) {
-			$linkpath = $this->getFilePath($langrow['ll_lang'],$langrow['ll_title']);
-			unlink($linkpath);
-			link($filepath,$linkpath);
-			unset($langrow,$linkpath);
+		foreach ($langarray as $l => $a) {
+			if ($l != $lang) {
+				$linkpath = $this->getFilePath($l,$a);
+				@unlink($linkpath);
+				link($filepath,$linkpath);
+				unset($langrow,$linkpath);
+			}
 		}
 		// free the memory
 		unset($filepath,$handle,$mysql,$langres);
@@ -318,29 +478,37 @@ EOQ;
 
 
 	function updateOneObject($lang,$article) {
-		$a = str_replace('"','\\\\"',pg_escape_string($article));
-		$aurl = urlencode(str_replace(' ','_',$a));
-		$l = str_replace('"','\\\\"',pg_escape_string($lang));
-		$articlefilter = '(tags @> E\'"wikipedia:'.$l.'"=>"'.$a.'"\') OR (tags @> E\'"wikipedia"=>"'.$l.':'.$a.'"\') OR (tags @> E\'"wikipedia"=>"http://'.$l.'.wikipedia.org/wiki/'.$aurl.'"\') OR (tags @> E\'"wikipedia"=>"https://'.$l.'.wikipedia.org/wiki/'.$aurl.'"\') OR (tags @> E\'"wikipedia:'.$l.'"=>"http://'.$l.'.wikipedia.org/wiki/'.$aurl.'"\') OR (tags @> E\'"wikipedia:'.$l.'"=>"https://'.$l.'.wikipedia.org/wiki/'.$aurl.'"\')';
+		$articlefilter = '( tags @> $1::hstore ) OR ( tags @> $2::hstore ) OR ( tags @> $3::hstore ) OR ( tags @> $4::hstore ) OR ( tags @> $5::hstore ) OR ( tags @> $6::hstore )';
 		$sql = 'SELECT '.self::simplifyGeoJSON.' FROM (
 			( SELECT way FROM planet_polygon WHERE '.$articlefilter.' )
 			UNION ( SELECT way FROM planet_line WHERE ( '.$articlefilter.' ) AND NOT EXISTS (SELECT 1 FROM planet_polygon WHERE planet_polygon.osm_id = planet_line.osm_id) )
 			UNION ( SELECT way FROM planet_point WHERE '.$articlefilter.' )
 			) AS wikistaff
 			';
+		pg_prepare($this->conn,'select_wikipedia_object',$sql);
 
-		$result = pg_query($this->conn,$sql);
+		$a = $this->escape($article);
+		$aurl = urlencode(str_replace(' ','_',$a));
+		$l = $this->escape($lang);
+		$params = array('"wikipedia:'.$l.'"=>"'.$a.'"',
+				'"wikipedia"=>"'.$l.':'.$a.'"',
+				'"wikipedia"=>"http://'.$l.'.wikipedia.org/wiki/'.$aurl.'"',
+				'"wikipedia"=>"https://'.$l.'.wikipedia.org/wiki/'.$aurl.'"',
+				'"wikipedia:'.$l.'"=>"http://'.$l.'.wikipedia.org/wiki/'.$aurl.'"',
+				'"wikipedia:'.$l.'"=>"https://'.$l.'.wikipedia.org/wiki/'.$aurl.'"');
+
+		$result = pg_execute($this->conn,'select_wikipedia_object',$params);
 		if($e = pg_last_error()) trigger_error($e, E_USER_ERROR);
 
 		if ($result && pg_num_rows($result) == 1 ) {
 			$row = pg_fetch_assoc($result);
-			$this->createlinks($lang, $article, $row['geojson'],true);
+			$this->createlinks($lang, $article, $row['geojson']);
 		}
 	}
 
 	function processOsmItems() {
 		// to avoid problems with geometrycollections first dump all geometries and collect them again
-		$sql = '( SELECT lang,article,'.self::simplifyGeoJSON.' FROM  (SELECT lang,article,(ST_Dump(way)).geom AS way FROM wiwosm WHERE lang != \'http\' AND article != \'http\' ) AS geomdump GROUP BY lang,article ORDER BY lang )';
+		$sql = 'SELECT lang_origin, article_origin, languages, geojson FROM ( SELECT lang_ref,'.self::simplifyGeoJSON.' FROM  (SELECT lang_ref,(ST_Dump(way)).geom AS way FROM wiwosm WHERE lang_ref != -1 ) AS geomdump GROUP BY lang_ref ) AS wiwosm_refs, wiwosm_wiki_ll WHERE wiwosm_refs.lang_ref = wiwosm_wiki_ll.lang_id';
 
 		// this consumes just too mutch memory:
 		/*
@@ -357,11 +525,14 @@ EOQ;
 			$this->exithandler();
 		}
 
-		$lastlang = '';
-		$skiplang = false;
+
 		$count = 0;
 
-		$result = pg_query($this->conn,'FETCH 500 FROM osmcur');
+		// fetch from osmcur in steps of 1000 elements
+		$result = pg_prepare($this->conn,'fetch_osmcur','FETCH 1000 FROM osmcur');
+		if ($result === false) $this->exithandler();
+
+		$result = pg_execute($this->conn,'fetch_osmcur',array());
 
 		$fetchcount = pg_num_rows($result);
 
@@ -371,17 +542,13 @@ EOQ;
 		while ($fetchcount > 0) {
 			while ($row = pg_fetch_assoc($result)) {
 
-				// if the lang is not a known valid language just try the next one
-				//if(!in_array($row['lang'],$alllang)) continue;
-				if ($skiplang && $lastlang==$row['lang']) continue;
-
-				$skiplang = !$this->createlinks($row['lang'], stripcslashes(urldecode($row['article'])), $row['geojson'], true, $lastlang);
+				$this->createlinks($row['lang_origin'], $row['article_origin'], $row['geojson'], self::hstoreToArray($row['languages']),true);
 				// free the memory
 				unset($row);
 			}
 			$count += $fetchcount;
 			echo $count.' results processed'."\n";
-			$result = pg_query($this->conn,'FETCH 500 FROM osmcur');
+			$result = pg_execute($this->conn,'fetch_osmcur',array());
 			$fetchcount = pg_num_rows($result);
 		}
 
