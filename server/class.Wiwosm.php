@@ -1,4 +1,11 @@
 <?php
+
+/**
+ * Wiwosm main class
+ * @author Christoph Wagner
+ * @version 1.0
+ */
+
 class Wiwosm {
 
 	private $toolserver_mycnf;
@@ -20,17 +27,43 @@ class Wiwosm {
 
 	private $conn;
 
+	private $mysqliconn;
+	private $prep_mysql;
+	private $lastlang;
+	private $lastarticle;
+
 	private $start;
 
-	private $lastlang;
-
+	/**
+	 * This is what to do on creating a Wiwosm object
+	 * (start timer, parse ini file for db connection … )
+	 **/
 	function __construct() {
 		$this->start = microtime(true);
+		$this->mysqliconn = false;
 		$this->json_path = self::JSON_PATH;
 		$this->toolserver_mycnf = parse_ini_file("/home/".get_current_user()."/.my.cnf");
 		$this->openPgConnection();
 	}
 
+	/**
+	 * This is what to do before exiting this program
+	 * (output time and memory consumption, close all db connections … )
+	 **/
+	function exithandler() {
+		echo 'Execution time: '.((microtime(true)-$this->start)/60)."min\n";
+		echo 'Peak memory usage: '.(memory_get_peak_usage(true)/1024/1024)."MB\n";
+		pg_close($this->conn);
+		if ($this->mysqliconn) {
+			if ($this->prep_mysql) $this->prep_mysql->close();
+			$this->mysqliconn->close();
+		}
+		exit;
+	}
+
+	/**
+	 * Open a postgresql db connection
+	 **/
 	function openPgConnection() {
 		// open psql connection
 		$this->conn = pg_connect('host=sql-mapnik dbname=osm_mapnik');
@@ -41,6 +74,8 @@ class Wiwosm {
 
 	/**
 	 * fnvhash funtion copied from http://code.google.com/p/boyanov/wiki/FNVHash
+	 * @param string $txt Input text to hash 
+	 * @return string FNVHash of text 
 	 **/
 	function fnvhash($txt) {
 		$buf = str_split($txt);
@@ -54,6 +89,13 @@ class Wiwosm {
 		return sprintf("%X", $hash);
 	}
 
+	/**
+	 * This function computes a filepath for a given lang/article combination
+	 * so that a good distributed tree will result in the filesystem.
+	 * @param string $lang the language of the given article
+	 * @param string $article the name of the article
+	 * @return string the absolute filepath for this lang and article 
+	 **/
 	function getFilePath($lang, $article) {
 		//$hash = md5($lang.str_replace('_',' ',$article));
 		// use fnvhash because its much faster than md5
@@ -66,10 +108,20 @@ class Wiwosm {
 		return $path;
 	}
 
+	/**
+	 * If we find a trash article while connecting to $lang.'wiki-p.db.toolserver.org' we can log it here to watch the problem later
+	 * @param string $lang the language of the given article
+	 * @param string $article the name of the article
+	 **/
 	function logUnknownLang($l,$a) {
 		error_log($l."\t".$a."\n",3,'/home/master/unknown.csv');
 	}
 
+
+	/**
+	 * We have to make sure that the full update process did work and so we simply test, if there are enough files in our update directory.
+	 * If this is the case we remove the _old dir, move the current dir to _old and the _update to current dir.
+	 **/
 	function testAndRename() {
 		//$countFiles = system('ls -RU1 --color=never '.$json_path.' | wc -l');
 		echo 'Execution time: '.((microtime(true)-$this->start)/60)."min\n";
@@ -77,20 +129,18 @@ class Wiwosm {
 		$countFiles = system('find '.$this->json_path.' -type f | wc -l');
 		// if there are more than 100000
 		if ( $countFiles > 100000 ) {
-			exec('rm -r ' . self::JSON_PATH . '_old');
+			rename(self::JSON_PATH . '_old',self::JSON_PATH . '_old_remove');
+			// let cronie remove the old directory
+			exec('qcronsub -l h_rt=2:00:00 -l virtual_free=5M -m a -N wiwosmcleanup rm -rf ' . self::JSON_PATH . '_old_remove');
 			rename(self::JSON_PATH , self::JSON_PATH . '_old');
 			rename($this->json_path , self::JSON_PATH );
 		}
 
 	}
 
-	function exithandler() {
-		echo 'Execution time: '.((microtime(true)-$this->start)/60)."min\n";
-		echo 'Peak memory usage: '.(memory_get_peak_usage(true)/1024/1024)."MB\n";
-		pg_close($this->conn);
-		exit;
-	}
-
+	/**
+	 * Just create some indices on wiwosm table that may help to speed things up.
+	 **/
 	function createIndices() {
 $query = <<<EOQ
 CREATE INDEX geom_index ON wiwosm USING GIST ( way ); -- geometry index
@@ -99,6 +149,9 @@ EOQ;
 		pg_query($this->conn,$query);
 	}
 
+	/**
+	 * Throw away the wiwosm table and rebuild it from the mapnik db
+	 **/
 	function updateWiwosmDB() {
 $query = <<<EOQ
 BEGIN;
@@ -145,12 +198,20 @@ EOQ;
 		} else {
 			echo 'wiwosm DB basic table build in '.((microtime(true)-$this->start)/60)." min\nStarting additional relation adding …\n";
 			$this->addMissingRelationObjects();
+			echo 'Missing Relations added '.((microtime(true)-$this->start)/60)." min\nCreate Indices and link articleslanguages …\n";
 			$this->createIndices();
 			$this->linkarticlelanguages();
 			echo 'wiwosm DB upgraded in '.((microtime(true)-$this->start)/60)." min\n";
 		}
 	}
 
+	/**
+	 * Get all members of a relation and if there are children that are relations too recursivly traverse them
+	 * @param string $memberscsv This is a comma separated string of relation children to process
+	 * @param array $nodelist This is the list of all nodes we have traversed until now. It is passed by reference so we can add the current node members there.
+	 * @param array $waylist Same as with nodes but for ways.
+	 * @param array $rellist Same as with nodes but for relations. This list is also used to check for loopings while recursivly traverse the relations.
+	 **/
 	function getAllMembers($memberscsv,&$nodelist,&$waylist,&$rellist) {
 		$subrellist = array();
 		$members = str_getcsv($memberscsv,',','"');
@@ -212,6 +273,11 @@ EOQ;
 		}
 	}
 
+	/**
+	 * Osm2pgsql doesn't get all relations by default in the standard mapnik database, because mapnik doesn't need them.
+	 * But we need them, because they can be tagged with wikipedia tags so we have to look in the planet_rels table, that is a preprocessing table for osm2pgsql that holds all the information we need, but in an ugly format.
+	 * So we have to search in the tags and members arrays if we can find something usefull, get the objects from the mapnik tables and store it in wiwosm.
+	 **/
 	function addMissingRelationObjects() {
 		// prepare some often used queries:
 
@@ -291,9 +357,13 @@ EOQ;
 		}
 	}
 
+	/**
+	 * We want to work with real php arrays, so we have to process the hstore string
+	 * @param string $hstore This is a string returned by a postgresql hstore column that looks like: '"foo"=>"bar", "baz"=>"blub", "lang"=>"article"' …
+	 * @return array return a php array with languages as keys and articles as values
+	 **/
 	public static function hstoreToArray($hstore) {
 		$ret_array = array();
-		echo $hstore."\n";
 		if (preg_match_all('/(?:^| )"((?:[^"]|(?<=\\\\)")*)"=>"((?:[^"]|(?<=\\\\)")*)"(?:$|,)/',$hstore,$matches)) {
 			$count = count($matches[1]);
 			if ($count == count($matches[2])) {
@@ -307,6 +377,11 @@ EOQ;
 		return $ret_array;
 	}
 
+	/**
+	 * Believe it or not - in the year 2012 string encoding still sucks!
+	 * @param string $str A string that is maybe not correct UTF-8 (reason is a bad urlencoding for example)
+	 * @return string return a string that is definitly a valid UTF-8 string even if some characters were dropped
+	 **/
 	public static function fixUTF8($str) {
 		$curenc = mb_detect_encoding($str);
 		if ($curenc != 'UTF-8') {
@@ -323,7 +398,7 @@ EOQ;
 		// if it is already clean UTF-8 there should be no problems
 		return $str;
 	}
-
+/*
 	function queryInterWikiLanguages($lang, $article) {
 		// if no lang or article is given, we can stop here
 		if (!$lang || !$article) return false;
@@ -348,6 +423,40 @@ EOQ;
 			while ($langrow = mysql_fetch_assoc($langres)) {
 				$langarray[$langrow['ll_lang']] = str_replace('_',' ',$langrow['ll_title']);
 			}
+		}
+		return $langarray;
+	}
+*/
+	function queryInterWikiLanguages($lang, $article) {
+		// if no lang or article is given, we can stop here
+		if (!$lang || !$article) return false;
+		//$this->lastarticle = str_replace(array(' ','\''),array('_','\\\''),$article);
+		$this->lastarticle = str_replace(' ','_',$article);
+		// just do a new connection if we get another lang than in loop before
+		if ($this->lastlang!=$lang) {
+			echo 'Try new lang:'.$lang."\n";
+			$this->lastlang=$lang;
+			if ($this->mysqliconn) {
+				if ($this->prep_mysql) $this->prep_mysql->close();
+				$this->mysqliconn->close();
+			}
+			$this->mysqliconn = new mysqli($lang.'wiki-p.db.toolserver.org', $this->toolserver_mycnf['user'], $this->toolserver_mycnf['password'], $lang.'wiki_p');
+			if ($this->mysqliconn->connect_error) {
+				$this->logUnknownLang($lang,$article);
+				// return that we should skip this lang because there are errors
+				return false;
+			} else {
+				// no error -> prepare sql
+				$this->prep_mysql = $this->mysqliconn->prepare('SELECT `ll_lang`,`ll_title` FROM `'.$lang.'wiki_p`.`langlinks` WHERE `ll_from` =(SELECT `page_id` FROM `'.$lang.'wiki_p`.`page` WHERE `page_namespace`=0 AND `page_is_redirect`=0 AND `page_title` = ? LIMIT 1) LIMIT 300');
+				$this->prep_mysql->bind_param('s', $this->lastarticle);
+			}
+		}
+		$this->prep_mysql->execute();
+		$this->prep_mysql->bind_result($ll_lang,$ll_title);
+
+		$langarray = array();
+		while ($this->prep_mysql->fetch()) {
+			$langarray[$ll_lang] = str_replace('_',' ',$ll_title);
 		}
 		return $langarray;
 	}
@@ -447,12 +556,12 @@ EOQ;
 	}
 
 
-	function createlinks($lang, $article, $geojson, $langarray = array(), $neednoIWLLupdate = false) {
+	function createlinks($lang, $article, $geojson, $lang_hstore = '', $neednoIWLLupdate = false) {
 		// for every osm object with a valid wikipedia-tag print the geojson to file
 		$filepath = $this->getFilePath($lang,$article);
 
 		// we need no update of the Interwiki language links if it is given by parameter and the file exists already
-		$neednoIWLLupdate &= file_exists($filepath);
+		$neednoIWLLupdate &= file_exists($filepath) && ($lang_hstore == '');
 
 		$handle = gzopen($filepath,'w');
 		gzwrite($handle,$geojson);
@@ -462,6 +571,7 @@ EOQ;
 		if ($neednoIWLLupdate) return true;
 
 		//$langarray = $this->queryInterWikiLanguages($lang,$article);
+		$langarray = self::hstoreToArray($lang_hstore);
 		// for every interwikilink do a hard link to the real file written above
 		foreach ($langarray as $l => $a) {
 			if ($l != $lang) {
@@ -472,7 +582,7 @@ EOQ;
 			}
 		}
 		// free the memory
-		unset($filepath,$handle,$mysql,$langres);
+		unset($filepath,$handle,$geojson,$lang_hstore,$langarray);
 		return true;
 	}
 
@@ -542,7 +652,7 @@ EOQ;
 		while ($fetchcount > 0) {
 			while ($row = pg_fetch_assoc($result)) {
 
-				$this->createlinks($row['lang_origin'], $row['article_origin'], $row['geojson'], self::hstoreToArray($row['languages']),true);
+				$this->createlinks($row['lang_origin'], $row['article_origin'], $row['geojson'], $row['languages'],true);
 				// free the memory
 				unset($row);
 			}
