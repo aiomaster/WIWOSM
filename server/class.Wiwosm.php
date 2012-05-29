@@ -117,6 +117,59 @@ class Wiwosm {
 		error_log($l."\t".$a."\n",3,'/home/master/unknown.csv');
 	}
 
+	/**
+	 * Write all broken languages with their articles into a nice html logfile
+	 **/
+	function logUnknown() {
+		$htmlrows = '';
+		// get all broken languages
+		$query = 'SELECT osm_id,lang,article,GeometryType(ST_Union(way)) AS type FROM wiwosm WHERE lang_ref = -1 GROUP BY osm_id,lang,article';
+		$result = pg_query($this->conn,$query);
+		while ($row = pg_fetch_assoc($result)) {
+			$osm_id = $row['osm_id'];
+			$type = 'way';
+			if ($row['type']=='POINT') $type = 'node';
+			if ($row['osm_id'] < 0) {
+				$type = 'relation';
+				// if relation remove leading minus
+				$osm_id = substr($row['osm_id'],1);
+			}
+
+			$htmlrows .= '      <tr>'."\n";
+			$htmlrows .= '        <td><a href="http://www.openstreetmap.org/browse/'.$type.'/'.$osm_id.'">'.$osm_id.' ('.$type.')</a></td>'."\n";
+			$htmlrows .= '        <td>'.htmlspecialchars($row['lang']).'</td>'."\n";
+			$htmlrows .= '        <td>'.htmlspecialchars($row['article']).'</td>'."\n";
+			$htmlrows .= '      </tr>'."\n";
+		}
+		$now = date(DATE_RFC822);
+
+$html = <<<EOT
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>WIWOSM broken languages</title>
+  </head>
+  <body>
+    <h1>Unknown languages found while WIWOSM-processing</h1>
+    <h2>$now</h2>
+    <table border=1>
+      <tr>
+        <th width="20%" align="left">OSM-Object</th>
+        <th align="left">language</th>
+        <th align="left">article</th>
+      </tr>
+$htmlrows
+    </table>
+  </body>
+</html>
+EOT;
+
+		//write that stuff to a file
+		$fh = fopen('/home/master/public_html/wiwosmlog/broken.html','w');
+		fwrite($fh, $html);
+		fclose($fh);
+	}
 
 	/**
 	 * We have to make sure that the full update process did work and so we simply test, if there are enough files in our update directory.
@@ -184,7 +237,7 @@ WHERE strpos(wikipedia,':')>0 -- remove tags with no language defined for exampl
 ORDER BY article,lang ASC
 )
 ;
-ALTER TABLE wiwosm ADD COLUMN lang_ref integer;
+ALTER TABLE wiwosm ADD COLUMN lang_ref integer DEFAULT 0;
 ALTER TABLE wiwosm OWNER TO master;
 GRANT ALL ON TABLE wiwosm TO master;
 GRANT SELECT ON TABLE wiwosm TO public;
@@ -466,7 +519,11 @@ EOQ;
 	}
 
 	function linkarticlelanguages() {
-		$query = "SELECT lang,article FROM wiwosm ORDER BY lang,article";
+		// try to fastconnect the obvious rows
+		$query = "UPDATE wiwosm SET lang_ref=lang_id FROM wiwosm_wiki_ll WHERE lang=lang_origin AND article=article_origin";
+		pg_query($this->conn,$query);
+
+		$query = "SELECT lang,article FROM wiwosm WHERE lang_ref=0 ORDER BY lang,article";
 
 		// lets update every row and use a cursor for that
 		if (!pg_query($this->conn,'BEGIN WORK') || !pg_query($this->conn,'DECLARE updatelangcur NO SCROLL CURSOR FOR '.$query.' FOR UPDATE OF wiwosm')) {
