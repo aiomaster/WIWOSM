@@ -495,7 +495,7 @@ EOQ;
 			}
 			$this->mysqliconn = new mysqli($lang.'wiki-p.db.toolserver.org', $this->toolserver_mycnf['user'], $this->toolserver_mycnf['password'], $lang.'wiki_p');
 			if ($this->mysqliconn->connect_error) {
-				$this->logUnknownLang($lang,$article);
+				//$this->logUnknownLang($lang,$article);
 				// return that we should skip this lang because there are errors
 				return false;
 			} else {
@@ -521,7 +521,9 @@ EOQ;
 	function linkarticlelanguages() {
 		// try to fastconnect the obvious rows
 		$query = "UPDATE wiwosm SET lang_ref=lang_id FROM wiwosm_wiki_ll WHERE lang=lang_origin AND article=article_origin";
-		pg_query($this->conn,$query);
+		$result = pg_query($this->conn,$query);
+
+		echo 'Could fastlink '.pg_affected_rows($result).' rows '.((microtime(true)-$this->start)/60)." min\n";
 
 		$query = "SELECT lang,article FROM wiwosm WHERE lang_ref=0 ORDER BY lang,article";
 
@@ -533,6 +535,8 @@ EOQ;
 
 		$langbefore = '';
 		$articlebefore = '';
+
+		$count = 0;
 
 		// prepare some sql queries that are used very often:
 
@@ -558,6 +562,9 @@ EOQ;
 			$article = str_replace('_',' ',stripcslashes(self::fixUTF8(urldecode($row['article']))));
 			$lang = $row['lang'];
 			if ($langbefore !== $lang || $articlebefore !== $article) {
+				if ($langbefore !== $lang) {
+					echo 'Lastlang was:'.$langbefore."\n".'Handled '.$count.' rows '.((microtime(true)-$this->start)/60)." min\n";
+				}
 				$langbefore = $lang;
 				$articlebefore = $article;
 				$lang_id = '-1';
@@ -585,6 +592,7 @@ EOQ;
 			}
 			pg_execute($this->conn,'update_wiwosm_lang_ref',array($lang_id));
 			if ($result === false) $this->exithandler();
+			$count += $fetchcount;
 			$result = pg_execute($this->conn,'fetch_next_updatelangcur',array());
 			$fetchcount = pg_num_rows($result);
 		}
