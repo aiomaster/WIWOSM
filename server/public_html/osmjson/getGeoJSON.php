@@ -13,7 +13,7 @@ $wiwosm = new Wiwosm();
 // status check for multiple, comma-separated articles
 if ($_GET['action'] == 'check' && $lang && $_GET['articles']) {
 	header('Content-Encoding: text/plain');
-	$articles = split(',', $_GET['articles']);
+	$articles = explode(',', $_GET['articles']);
 	foreach ($articles as $article) {
 		$file = $wiwosm->getFilePath($lang, $article);
 		print "$article\t" . (file_exists($file) ? 1 : 0) . "\n";
