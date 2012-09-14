@@ -1,3 +1,4 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
 <html>
 	<head>
 <meta http-equiv="content-type" content="text/html; charset=UTF-8">
@@ -24,13 +25,14 @@ if (!isset($a)){$a=$messages['en'][$withprefix];}
 return $a;
 }
 
-function getFilePath($key) {
-	$hash = md5($key);
-	$path = 'http://toolserver.org/~kolossos/openlayers/master-store/'.substr($hash,0,2).'/'.substr($hash,0,4);
-	mkdir($path, 0755, true);
-	return $path.'/'.$hash.'.geojson';
+function detect_not_ie()
+{
+    if (isset($_SERVER['HTTP_USER_AGENT']) && 
+    (strpos($_SERVER['HTTP_USER_AGENT'], 'MSIE') !== false))
+        return false;
+    else
+        return true;
 }
-
 
 $lang=addslashes(urldecode($_GET[lang]));
 $uselang=addslashes(urldecode($_GET[uselang]));
@@ -53,6 +55,8 @@ if ($secure==1) {$secureinsert=", 'secure' : '1'";}
 
 $title=urldecode($_GET[title]);
 $action=addslashes(urldecode($_GET[action]));
+
+// Geohack
 
 if ( isset ( $_REQUEST['params'] ) ) {
 	$p = new geo_param(  $_REQUEST['params'] , "Dummy" ); ;
@@ -110,12 +114,13 @@ if ($x<>""){$position.="
 		args.lon = $x;
 		args.lat = $y; ";}
 
-echo "<!--- //position:".$position."\n dim:".$dim."\n zoomtype:".$zoomtype." --->\n";
-
+echo "<!-- //position:".$position."\n dim:".$dim."\n zoomtype:".$zoomtype." -->\n";
+// Geohack end
 ?>
 		<script src="http://toolserver.org/~osm/libs/jquery/latest/jquery-min.js" type="text/javascript"></script>
-		<script src="http://toolserver.org/~osm/libs/openlayers/latest/OpenLayers.js" type="text/javascript"></script>
-		<script src="http://toolserver.org/~osm/libs/openstreetmap/latest/OpenStreetMap.js" type="text/javascript"></script>
+		<script src="http://toolserver.org/~osm/libs/openlayers/2.12/OpenLayers.js" type="text/javascript"></script>
+<!--script src="http://openlayers.org/dev/OpenLayers.js" type="text/javascript"></script-->
+		<!--script src="http://toolserver.org/~osm/libs/openstreetmap/latest/OpenStreetMap.js" type="text/javascript"></script-->
 		<script src="./OpenLayers/lib/OpenLayers/Lang/<?php echo $uselang;?>.js" type="text/javascript"></script>
 		
 		<script type="text/javascript">
@@ -135,8 +140,8 @@ echo "<!--- //position:".$position."\n dim:".$dim."\n zoomtype:".$zoomtype." ---
 			function init()
 			{
 				OpenLayers.Lang.setCode('<?php echo $uselang;?>');
-				var urlRegex = new RegExp('^http://([abc]).www.toolserver.org/tiles/([^/]+)/(.*)$');
 				
+				/*
 				// show an error image for missing tiles
 				OpenLayers.Util.onImageLoadError = function()
 				{
@@ -149,7 +154,7 @@ echo "<!--- //position:".$position."\n dim:".$dim."\n zoomtype:".$zoomtype." ---
 							var inst = RegExp.$1;
 							this.src = 'http://'+inst+'.tile.openstreetmap.org/'+tile;;
 							
-							if(console && console.log)
+							if(window.console && console.log)
 								console.log('redirecting request for '+tile+' to openstreetmap.org: '+this.src);
 							
 							return;
@@ -163,7 +168,7 @@ echo "<!--- //position:".$position."\n dim:".$dim."\n zoomtype:".$zoomtype." ---
 						this.src = 'http://www.openstreetmap.org/openlayers/img/404.png';
 					}
 				};
-
+*/
 				
 				// get the request-parameters
 				var args = OpenLayers.Util.getParameters();
@@ -207,28 +212,64 @@ echo "<!--- //position:".$position."\n dim:".$dim."\n zoomtype:".$zoomtype." ---
 					CLASS_NAME: "OpenLayers.Layer.OSM.Toolserver"
 				});
 
-					
+				var urlRegex = new RegExp('^http://([abc]).www.toolserver.org/tiles/([^/]+)/(.*)$');
 				// add the osm.org layers
 				var osm = new OpenLayers.Layer.OSM.Toolserver('osm', {
-				attribution:'<?php echo translate('map-by',$uselang);?> <a target="_blank" href="http://www.openstreetmap.org/"><?php echo translate('openstreetmap',$uselang);?></a> (<a target="_blank" href="http://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>)'})
+					attribution:'<?php echo translate('map-by',$uselang);?> <a target="_blank" href="http://www.openstreetmap.org/"><?php echo translate('openstreetmap',$uselang);?></a> (<a target="_blank" href="http://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>)',
+					transitionEffect: 'resize',
+					tileOptions: {
+						'eventListeners': {
+							'loaderror': function(evt) {
+								if(urlRegex.test(this.url))
+								{
+									var style = RegExp.$2;
+									if(style == 'osm'||style == 'osm-no-labels')
+									{
+										var tile = RegExp.$3;
+										var inst = RegExp.$1;
+										this.setImgSrc('http://'+inst+'.tile.openstreetmap.org/'+tile);
+							
+										if(window.console && console.log)
+											console.log('redirecting request for '+tile+' to openstreetmap.org: '+this.url);
+							
+										return;
+									}
+									if(style == 'osm-labels-ru')
+									{
+										this.setImgSrc('http://toolserver.org/~osm/libs/openlayers/latest/img/blank.gif');
+										return;
+									}
+
+									this.setImgSrc('http://www.openstreetmap.org/openlayers/img/404.png');
+								}
+							}
+						},
+						crossOriginKeyword: null
+					}
+				})
 				osm.setIsBaseLayer(true);
                                 map.addLayer(osm);
                                 var osmNoLabels = new OpenLayers.Layer.OSM.Toolserver('osm-no-labels',{
-				attribution:'<?php echo translate('map-by',$uselang);?> <a target="_blank" href="http://www.openstreetmap.org/"><?php echo translate('openstreetmap',$uselang);?></a> (<a target="_blank" href="http://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>)',
-                                visibility: false } ,
+					attribution:'<?php echo translate('map-by',$uselang);?> <a target="_blank" href="http://www.openstreetmap.org/"><?php echo translate('openstreetmap',$uselang);?></a> (<a target="_blank" href="http://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>)',
+					visibility: false,
+					tileOptions: { crossOriginKeyword: null }
+				} ,
                                 {isBaseLayer:true                  });
 				osmNoLabels.setIsBaseLayer(true);
 				osmNoLabels.setVisibility(false);
                                 map.addLayer(osmNoLabels);
 
-				map.addLayer(new OpenLayers.Layer.OSM.Mapnik("osm.org mapnik"), {visibility: false});
+				map.addLayer(new OpenLayers.Layer.OSM("osm.org mapnik"), {visibility: false ,transitionEffect: 'resize'});
 				
-				map.addLayer(new OpenLayers.Layer.OSM.Toolserver('hikebike'));
+				map.addLayer(new OpenLayers.Layer.OSM.Toolserver('hikebike', { tileOptions: { crossOriginKeyword: null },transitionEffect: 'resize' } ));
+
+				map.addLayer(new OpenLayers.Layer.OSM("Public Transport (&Ouml;PNV)",
+					"http://tile.memomaps.de/tilegen/${z}/${x}/${y}.png",  {visibility: false, tileOptions: { crossOriginKeyword: null },transitionEffect: 'resize' }));
 				
-				<?php if($lang=="de") {echo "map.addLayer(new OpenLayers.Layer.OSM.Toolserver('germany'));";}?>
+				<?php if($lang=="de") {echo "map.addLayer(new OpenLayers.Layer.OSM.Toolserver('germany',{ tileOptions: { crossOriginKeyword: null },transitionEffect: 'resize' }));";}?>
               
                
-		 osmLabelsLang = new OpenLayers.Layer.OSM.Toolserver('osm-labels-<?php echo $lang;?>', {isBaseLayer: false, visibility: false, attribution:''});
+		 osmLabelsLang = new OpenLayers.Layer.OSM.Toolserver('osm-labels-<?php echo $lang;?>', {isBaseLayer: false, visibility: false, tileOptions: { crossOriginKeyword: null }, attribution:''});
 		map.addLayers([osmLabelsLang]);
 
 
@@ -283,7 +324,14 @@ print <<<END
     //alert ("$lang $title");
     var p = new OpenLayers.Format.GeoJSON();
 
-    OpenLayers.loadURL(JSONurl, {}, null, function (response) {
+    OpenLayers.Request.GET({url:JSONurl, 
+			    callback:function (response) {
+
+    if(response.status == 404) {
+        vector_layer.setVisibility(false);
+	vector_layer.setName("OSM objects (not found)");
+			      }
+    else {
     var gformat = new OpenLayers.Format.GeoJSON();
     gg = '{"type":"FeatureCollection", "features":[{"geometry": ' +
 	  response.responseText + '}]}';
@@ -292,17 +340,14 @@ print <<<END
     vector_layer.addFeatures(feats);
     vector_layer.setName("OSM objects (WIWOSM)");
     document.title = args.title+" on OpenStreetMap";
-      if (vector_layer.getDataExtent().getHeight()>0) 
+
+      if (vector_layer.getDataExtent().getHeight()>500) 
 	{ map.zoomToExtent (vector_layer.getDataExtent(),false);} 
      
-     if (!args.lon && vector_layer.getDataExtent().getHeight()==0) 
+     if (!args.lon && vector_layer.getDataExtent().getHeight()<=500) 
 	{map.setCenter (vector_layer.getDataExtent().getCenterLonLat(),17);}  
-
-    }, 
-    function (noresponse) {
-     vector_layer.setVisibility(false);
-     vector_layer.setName("OSM objects (not found)");
-     }
+         }
+    }}
     );
 END;
 }
@@ -539,8 +584,9 @@ END;
 						isBaseLayer: false,
 						transparent: true, 
 						visibility: false, 
-						numZoomLevels: 16
-					}
+						numZoomLevels: 16,
+						tileOptions: { crossOriginKeyword: null }
+					} 
 					));
 
 			}
@@ -607,6 +653,10 @@ $.ajax({
 			body {
 				padding: 0;
 				margin: 0;
+			}
+
+			.olImageLoadError { 
+			    display: none;
 			}
 			
 			.olControlAttribution
