@@ -3,6 +3,8 @@
 ini_set('display_errors', false);
 ini_set('html_errors', false);
 
+header('Access-Control-Allow-Origin: *');
+
 require('/home/master/class.Wiwosm.php');
 
 $article = $_GET['article'];
