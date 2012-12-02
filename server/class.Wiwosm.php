@@ -621,12 +621,14 @@ EOQ;
 	}
 
 
-	function createlinks($lang, $article, $geojson, $lang_hstore = '', $neednoIWLLupdate = false) {
+	function createlinks($lang, $article, $geojson, $lang_hstore = '', $forceIWLLupdate = false) {
 		// for every osm object with a valid wikipedia-tag print the geojson to file
 		$filepath = $this->getFilePath($lang,$article);
 
-		// we need no update of the Interwiki language links if it is given by parameter and the file exists already
-		$neednoIWLLupdate &= file_exists($filepath) && ($lang_hstore == '');
+		// we need no update of the Interwiki language links if there are no other languages in hstore given or
+		// the file exists already and there is no force parameter given that forces to overwrite the existing links.
+		// So we should create the Links, if the file does not exist already (and hstore is given) because it is new then
+		$neednoIWLLupdate = ($lang_hstore == '') || (file_exists($filepath) && !$forceIWLLupdate);
 
 		$handle = gzopen($filepath,'w');
 		gzwrite($handle,$geojson);
@@ -711,18 +713,18 @@ EOQ;
 
 		$fetchcount = pg_num_rows($result);
 
-		echo 'Get the first '.$fetchcount.' rows.'."\n";
+		echo 'Get the first '.$fetchcount.' rows:'.((microtime(true)-$this->start)/60)." min\n";
 
 		//damn cursor loop:
 		while ($fetchcount > 0) {
 			while ($row = pg_fetch_assoc($result)) {
 
-				$this->createlinks($row['lang_origin'], $row['article_origin'], $row['geojson'], $row['languages'],true);
+				$this->createlinks($row['lang_origin'], $row['article_origin'], $row['geojson'], $row['languages']);
 				// free the memory
 				unset($row);
 			}
 			$count += $fetchcount;
-			echo $count.' results processed'."\n";
+			echo $count.' results processed:'.((microtime(true)-$this->start)/60)." min\n";
 			$result = pg_execute($this->conn,'fetch_osmcur',array());
 			$fetchcount = pg_num_rows($result);
 		}

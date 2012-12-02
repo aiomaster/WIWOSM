@@ -1,7 +1,8 @@
 #! /bin/sh
 #$ -N wiwosm
-#$ -l h_rt=4:00:00
-#$ -l virtual_free=200M
+#$ -l h_rt=6:00:00
+#$ -l virtual_free=100M
+#$ -l arch=*
 #$ -l sql-toolserver=1
 #$ -l sql-mapnik=1
 #$ -m a
@@ -9,8 +10,6 @@
 #$ -e $HOME/log/wiwosm.err
 
 
-### on wednesday do a full upgrade (takes 84min)
-### otherdays just update one file for every article (takes 35 min)
 if [ `date +%u` -eq 3 ]
 then
 	php /home/master/gen_json_files.php full

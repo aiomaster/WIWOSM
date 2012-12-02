@@ -9,11 +9,18 @@ ini_set('html_errors', false);
 
 $fullupdate = ($argc > 1) && ($argv[1] == 'full');
 
+echo date(DATE_RFC822)."\n";
+
 $wiwosm = new Wiwosm();
 
-if ($fullupdate) $wiwosm->json_path .= '_update';
+if ($fullupdate) {
+	$wiwosm->json_path .= '_update';
+	echo 'doing full update'."\n";
+	$wiwosm->createLangTable();
+}
 
 $wiwosm->updateWiwosmDB();
+$wiwosm->logUnknown();
 $wiwosm->processOsmItems();
 if ($fullupdate) $wiwosm->testAndRename();
 $wiwosm->exithandler();
