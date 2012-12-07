@@ -184,7 +184,7 @@ EOT;
 		if ( $countFiles > 100000 ) {
 			rename(self::JSON_PATH . '_old',self::JSON_PATH . '_old_remove');
 			// let cronie remove the old directory
-			exec('qcronsub -l h_rt=2:00:00 -l virtual_free=5M -m a -N wiwosmcleanup rm -rf ' . self::JSON_PATH . '_old_remove');
+			exec('qcronsub /home/master/cleanup.sh');
 			rename(self::JSON_PATH , self::JSON_PATH . '_old');
 			rename($this->json_path , self::JSON_PATH );
 		}
@@ -501,12 +501,28 @@ EOQ;
 			} else {
 				// no error -> prepare sql
 				$this->prep_mysql = $this->mysqliconn->prepare('SELECT `ll_lang`,`ll_title` FROM `'.$lang.'wiki_p`.`langlinks` WHERE `ll_from` =(SELECT `page_id` FROM `'.$lang.'wiki_p`.`page` WHERE `page_namespace`=0 AND `page_is_redirect`=0 AND `page_title` = ? LIMIT 1) LIMIT 300');
-				$this->prep_mysql->bind_param('s', $this->lastarticle);
+				// if we could not prepare the select statement we should skip this lang
+				if (!$this->prep_mysql) return false;
+				if (!$this->prep_mysql->bind_param('s', $this->lastarticle)) {
+					echo 'bind_param failed with lastarticle='.$this->lastarticle.': '.$this->prep_mysql->error()."\n";
+					return false;
+				}
 			}
 		}
-		$this->prep_mysql->execute();
-		$this->prep_mysql->bind_result($ll_lang,$ll_title);
-
+		try {
+			if ($this->prep_mysql)
+			       	$this->prep_mysql->execute();
+			else {
+				echo 'article: '.$this->lastarticle."\n".'lang: '.$lang."\n--\n";
+				return false;
+			}
+			if (!$this->prep_mysql->bind_result($ll_lang,$ll_title)) {
+				echo 'bind_result failed with lastarticle='.$this->lastarticle.': '.$this->prep_mysql->error()."\n";
+				return false;
+			}
+		} catch (Exception $e) {
+			echo $e->getMessage()."\n".'article: '.$this->lastarticle."\n".'lang: '.$lang."\n--\n";
+		}
 		$langarray = array();
 		while ($this->prep_mysql->fetch()) {
 			$langarray[$ll_lang] = str_replace('_',' ',$ll_title);
