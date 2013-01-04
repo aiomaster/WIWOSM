@@ -499,12 +499,16 @@ EOQ;
 				// return that we should skip this lang because there are errors
 				return false;
 			} else {
+				//connection established but does the database and the tables exist?
+				$tableres = $this->mysqliconn->query('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = \''.$lang.'wiki_p\' AND ( table_name = \'langlinks\' OR \'page\')');
+				$tablecount = $tableres->fetch_row();
+				if ( $tablecount[0] != 2 ) return false;
 				// no error -> prepare sql
 				$this->prep_mysql = $this->mysqliconn->prepare('SELECT `ll_lang`,`ll_title` FROM `'.$lang.'wiki_p`.`langlinks` WHERE `ll_from` =(SELECT `page_id` FROM `'.$lang.'wiki_p`.`page` WHERE `page_namespace`=0 AND `page_is_redirect`=0 AND `page_title` = ? LIMIT 1) LIMIT 300');
 				// if we could not prepare the select statement we should skip this lang
 				if (!$this->prep_mysql) return false;
 				if (!$this->prep_mysql->bind_param('s', $this->lastarticle)) {
-					echo 'bind_param failed with lastarticle='.$this->lastarticle.': '.$this->prep_mysql->error()."\n";
+					echo 'bind_param failed with lastarticle='.$this->lastarticle.': '.$this->prep_mysql->error."\n";
 					return false;
 				}
 			}
@@ -517,7 +521,7 @@ EOQ;
 				return false;
 			}
 			if (!$this->prep_mysql->bind_result($ll_lang,$ll_title)) {
-				echo 'bind_result failed with lastarticle='.$this->lastarticle.': '.$this->prep_mysql->error()."\n";
+				echo 'bind_result failed with lastarticle='.$this->lastarticle.': '.$this->prep_mysql->error."\n";
 				return false;
 			}
 		} catch (Exception $e) {
