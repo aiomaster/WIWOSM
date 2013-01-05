@@ -500,7 +500,7 @@ EOQ;
 				return false;
 			} else {
 				//connection established but does the database and the tables exist?
-				$tableres = $this->mysqliconn->query('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = \''.$lang.'wiki_p\' AND ( table_name = \'langlinks\' OR \'page\')');
+				$tableres = $this->mysqliconn->query('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = \''.$lang.'wiki_p\' AND table_name IN (\'langlinks\', \'page\')');
 				$tablecount = $tableres->fetch_row();
 				if ( $tablecount[0] != 2 ) return false;
 				// no error -> prepare sql
