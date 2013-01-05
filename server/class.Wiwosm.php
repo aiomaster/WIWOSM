@@ -495,6 +495,8 @@ EOQ;
 				if ($this->prep_mysql) $this->prep_mysql->close();
 				$this->mysqliconn->close();
 			}
+			// if the lang for example is fiu-vro the table is named fiu_vro so we have to replace - by _
+			$lang = str_replace('-','_',$lang);
 			$this->mysqliconn = new mysqli($lang.'wiki-p.db.toolserver.org', $this->toolserver_mycnf['user'], $this->toolserver_mycnf['password'], $lang.'wiki_p');
 			if ($this->mysqliconn->connect_error) {
 				//$this->logUnknownLang($lang,$article);
