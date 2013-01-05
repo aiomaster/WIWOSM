@@ -149,11 +149,13 @@ $html = <<<EOT
   <head>
     <meta charset="UTF-8">
     <title>WIWOSM broken languages</title>
+    <script src="sorttable.js"></script>
   </head>
   <body>
     <h1>Unknown languages found while WIWOSM-processing</h1>
     <h2>$now</h2>
-    <table border=1>
+    <p><b>Hint:</b> Columns are now sortable by clicking if you have JS enabled! (thanks to <a href="http://wiki.openstreetmap.org/wiki/User:Jjaf.de">User Jjaf.de</a> for the idea)</p>
+    <table border=1 class="sortable">
       <tr>
         <th width="20%" align="left">OSM-Object</th>
         <th align="left">language</th>
@@ -502,7 +504,7 @@ EOQ;
 				//connection established but does the database and the tables exist?
 				$tableres = $this->mysqliconn->query('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = \''.$lang.'wiki_p\' AND table_name IN (\'langlinks\', \'page\')');
 				$tablecount = $tableres->fetch_row();
-				if ( $tablecount[0] != 2 ) return false;
+				if ( $tablecount[0] != '2' ) return false;
 				// no error -> prepare sql
 				$this->prep_mysql = $this->mysqliconn->prepare('SELECT `ll_lang`,`ll_title` FROM `'.$lang.'wiki_p`.`langlinks` WHERE `ll_from` =(SELECT `page_id` FROM `'.$lang.'wiki_p`.`page` WHERE `page_namespace`=0 AND `page_is_redirect`=0 AND `page_title` = ? LIMIT 1) LIMIT 300');
 				// if we could not prepare the select statement we should skip this lang
