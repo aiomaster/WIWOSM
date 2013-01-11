@@ -212,7 +212,7 @@ $query = <<<EOQ
 BEGIN;
 DROP TABLE IF EXISTS wiwosm;
 CREATE TABLE wiwosm AS (
-SELECT osm_id, way, lower(split_part(wikipedia, ':', 1)) AS lang, split_part(substring(wikipedia from position(':' in wikipedia)+1),'#', 1) AS article, split_part(wikipedia,'#', 2) AS anchor FROM (
+SELECT osm_id, way, ( CASE WHEN strpos(wikipedia,':')>0 THEN lower(split_part(wikipedia, ':', 1)) ELSE '' END ) AS lang, split_part(substring(wikipedia from position(':' in wikipedia)+1),'#', 1) AS article, split_part(wikipedia,'#', 2) AS anchor FROM (
 SELECT osm_id, way,
 regexp_replace(
   substring(
@@ -235,7 +235,7 @@ UNION ( SELECT osm_id, tags, way FROM planet_line WHERE strpos(array_to_string(a
 UNION ( SELECT osm_id, tags, way FROM planet_polygon WHERE strpos(array_to_string(akeys(tags),','),'wikipedia')>0 )
 ) AS wikistaff
 ) AS wikiobjects
-WHERE strpos(wikipedia,':')>0 -- remove tags with no language defined for example wikipedia=Artikel
+-- WHERE strpos(wikipedia,':')>0 -- remove tags with no language defined for example wikipedia=Artikel
 ORDER BY article,lang ASC
 )
 ;
