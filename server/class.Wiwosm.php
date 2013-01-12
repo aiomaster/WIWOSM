@@ -123,12 +123,13 @@ class Wiwosm {
 	function logUnknown() {
 		$htmlrows = '';
 		// get all broken languages
-		$query = 'SELECT osm_id,lang,article,GeometryType(ST_Union(way)) AS type FROM wiwosm WHERE lang_ref = -1 GROUP BY osm_id,lang,article';
+		$query = 'SELECT osm_id,lang,article,array_agg(ST_GeometryType(way)) AS type FROM wiwosm WHERE lang_ref = -1 GROUP BY osm_id,lang,article';
 		$result = pg_query($this->conn,$query);
+		$count = pg_num_rows($result);
 		while ($row = pg_fetch_assoc($result)) {
 			$osm_id = $row['osm_id'];
 			$type = 'way';
-			if ($row['type']=='POINT') $type = 'node';
+			if ($row['type']=='{ST_Point}') $type = 'node';
 			if ($row['osm_id'] < 0) {
 				$type = 'relation';
 				// if relation remove leading minus
@@ -143,18 +144,26 @@ class Wiwosm {
 		}
 		$now = date(DATE_RFC822);
 
+		$sortscript = '';
+		$sortmessage = '';
+		if ($count < 1000) {
+			$sortscript = '<script src="sorttable.js"></script>';
+			$sortmessage = '<p><b>Hint:</b> Columns are now sortable by clicking if you have JS enabled! (thanks to <a href="http://wiki.openstreetmap.org/wiki/User:Jjaf.de">User Jjaf.de</a> for the idea)</p>';
+		}
+
 $html = <<<EOT
 <!DOCTYPE html>
 <html>
   <head>
     <meta charset="UTF-8">
     <title>WIWOSM broken languages</title>
-    <script src="sorttable.js"></script>
+    $sortscript
   </head>
   <body>
-    <h1>Unknown languages found while WIWOSM-processing</h1>
+    <h1>$count unknown wikipedia tags found while WIWOSM-processing</h1>
     <h2>$now</h2>
-    <p><b>Hint:</b> Columns are now sortable by clicking if you have JS enabled! (thanks to <a href="http://wiki.openstreetmap.org/wiki/User:Jjaf.de">User Jjaf.de</a> for the idea)</p>
+    $sortmessage
+    <p>12.01.2013: Now all wikipedia tags with undefined language like wikipedia=article are shown, too! Sorry for the big load!</p>
     <table border=1 class="sortable">
       <tr>
         <th width="20%" align="left">OSM-Object</th>
@@ -243,6 +252,7 @@ ALTER TABLE wiwosm ADD COLUMN lang_ref integer DEFAULT 0;
 ALTER TABLE wiwosm OWNER TO master;
 GRANT ALL ON TABLE wiwosm TO master;
 GRANT SELECT ON TABLE wiwosm TO public;
+UPDATE wiwosm SET lang_ref=-1 WHERE lang = ANY (ARRAY['','http','subject','name','operator','related','sculptor','architect','maker']); -- we know that there could not be a language reference in Wikipedia for some lang values.
 COMMIT;
 EOQ;
 
