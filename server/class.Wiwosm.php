@@ -123,13 +123,13 @@ class Wiwosm {
 	function logUnknown() {
 		$htmlrows = '';
 		// get all broken languages
-		$query = 'SELECT osm_id,lang,article,array_agg(ST_GeometryType(way)) AS type FROM wiwosm WHERE lang_ref = -1 GROUP BY osm_id,lang,article';
+		$query = 'SELECT osm_id,lang,article,array_agg(ST_GeometryType(way)) AS geomtype FROM wiwosm WHERE lang_ref = -1 GROUP BY osm_id,lang,article';
 		$result = pg_query($this->conn,$query);
 		$count = pg_num_rows($result);
 		while ($row = pg_fetch_assoc($result)) {
 			$osm_id = $row['osm_id'];
 			$type = 'way';
-			if ($row['type']=='{ST_Point}') $type = 'node';
+			if ($row['geomtype']=='{ST_Point}') $type = 'node';
 			if ($row['osm_id'] < 0) {
 				$type = 'relation';
 				// if relation remove leading minus
@@ -138,6 +138,7 @@ class Wiwosm {
 
 			$htmlrows .= '      <tr>'."\n";
 			$htmlrows .= '        <td><a href="http://www.openstreetmap.org/browse/'.$type.'/'.$osm_id.'">'.$osm_id.' ('.$type.')</a></td>'."\n";
+			$htmlrows .= '        <td><a href="http://www.openstreetmap.org/edit?editor=potlatch2&'.$type.'='.$osm_id.'">Potlatch2</a>, <a href="http://127.0.0.1:8111/load_object?objects='.$type[0].$osm_id.'">JOSM/Merkaator</a></td>'."\n";
 			$htmlrows .= '        <td>'.htmlspecialchars($row['lang']).'</td>'."\n";
 			$htmlrows .= '        <td>'.htmlspecialchars($row['article']).'</td>'."\n";
 			$htmlrows .= '      </tr>'."\n";
@@ -164,11 +165,13 @@ $html = <<<EOT
     <h2>$now</h2>
     $sortmessage
     <p>12.01.2013: Now all wikipedia tags with undefined language like wikipedia=article are shown, too! Sorry for the big load!</p>
+    <p>14.01.2013: Edit links are now available for potlatch2 and JOSM or Merkaator with Remotecontrol plugin.</p>
     <table border=1 class="sortable">
-      <tr>
-        <th width="20%" align="left">OSM-Object</th>
-        <th align="left">language</th>
-        <th align="left">article</th>
+      <tr align="left">
+        <th width="20%">OSM-Object</th>
+        <th>Edit links</th>
+        <th>language</th>
+        <th>article</th>
       </tr>
 $htmlrows
     </table>
@@ -180,6 +183,39 @@ EOT;
 		$fh = fopen('/home/master/public_html/wiwosmlog/broken.html','w');
 		fwrite($fh, $html);
 		fclose($fh);
+	}
+
+	/**
+	 * Write all broken languages with their articles into a nice JSON logfile
+	 **/
+	function logUnknownJSON() {
+		// get all broken languages
+		$query = 'SELECT osm_id,lang,article,array_agg(ST_GeometryType(way)) AS geomtype FROM wiwosm WHERE lang_ref = -1 GROUP BY osm_id,lang,article';
+		$result = pg_query($this->conn,$query);
+		$count = pg_num_rows($result);
+		$json = '{"created":"'.date(DATE_RFC822).'","count":"'.$count.'","items":[';
+		$r = array();
+		while ($row = pg_fetch_assoc($result)) {
+			$r['i'] = $row['osm_id'];
+			$r['t'] = 'w';
+			if ($row['geomtype']=='{ST_Point}') $r['t'] = 'n';
+			if ($row['osm_id'] < 0) {
+				$r['t'] = 'r';
+				// if relation remove leading minus
+				$r['i'] = substr($row['osm_id'],1);
+			}
+			$r['l'] = $row['lang'];
+			$r['a'] = $row['article'];
+			$json .= json_encode($r).',';
+
+		}
+		$json = rtrim($json,',');
+		$json .= ']}';
+
+		//write that stuff to a gzipped json file
+		$handle = gzopen('/home/master/public_html/wiwosmlog/broken.json.gz','w');
+		gzwrite($handle,$json);
+		gzclose($handle);
 	}
 
 	/**
@@ -229,8 +265,8 @@ regexp_replace(
       substring(array_to_string(akeys(tags),',') from 'wikipedia:?[^,]*'), -- this is the tagname for example "wikipedia" or "wikipedia:de"
       ':',
       regexp_replace(
-        tags->substring(array_to_string(akeys(tags),',') from '[^,]*wikipedia:?[^,]*'), -- get the first wikipedia tag from hstore
-        '^https?://(\\w*)\\.wikipedia\\.org/wiki/(.*)$', -- matches if the value is a wikipedia url (otherwise it is an article)
+        tags->substring(array_to_string(akeys(tags),',') from 'wikipedia:?[^,]*'), -- get the first wikipedia tag from hstore
+        '^(?:https?://)?(\\w*)\\.wikipedia\\.org/wiki/(.*)$', -- matches if the value is a wikipedia url (otherwise it is an article)
         '\\1:\\2' -- get the domain prefix and use it as language key followed by the article name
       )
     ) -- resulting string is for example wikipedia:de:Dresden
@@ -239,9 +275,9 @@ regexp_replace(
   '^(\\w*:)\\1','\\1' -- it is possible that there is such a thing like "de:de:Artikel" left if there was a tag like "wikipedia:de=http://de.wikipedia.org/wiki/Artikel", so remove double language labels
 ) AS "wikipedia"
 FROM (
-( SELECT osm_id, tags, way FROM planet_point WHERE strpos(array_to_string(akeys(tags),','),'wikipedia')>0 )
-UNION ( SELECT osm_id, tags, way FROM planet_line WHERE strpos(array_to_string(akeys(tags),','),'wikipedia')>0 AND NOT EXISTS (SELECT 1 FROM planet_polygon WHERE planet_polygon.osm_id = planet_line.osm_id) ) -- we don't want LineStrings that exist as polygon, yet
-UNION ( SELECT osm_id, tags, way FROM planet_polygon WHERE strpos(array_to_string(akeys(tags),','),'wikipedia')>0 )
+( SELECT osm_id, tags, way FROM planet_point WHERE strpos(concat(',',array_to_string(akeys(tags),',')),',wikipedia')>0 )
+UNION ( SELECT osm_id, tags, way FROM planet_line WHERE strpos(concat(',',array_to_string(akeys(tags),',')),',wikipedia')>0 AND NOT EXISTS (SELECT 1 FROM planet_polygon WHERE planet_polygon.osm_id = planet_line.osm_id) ) -- we don't want LineStrings that exist as polygon, yet
+UNION ( SELECT osm_id, tags, way FROM planet_polygon WHERE strpos(concat(',',array_to_string(akeys(tags),',')),',wikipedia')>0 )
 ) AS wikistaff
 ) AS wikiobjects
 -- WHERE strpos(wikipedia,':')>0 -- remove tags with no language defined for example wikipedia=Artikel

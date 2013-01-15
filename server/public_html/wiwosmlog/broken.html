@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>WIWOSM broken languages</title>
+  <link rel="stylesheet" href="slick.grid.css" type="text/css"/>
+  <link rel="stylesheet" href="jquery-ui-1.8.16.custom.css" type="text/css"/>
+
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1/jquery.min.js"></script>
+    <script src="jquery.event.drag-2.0.min.js"></script>
+
+   <script src="slick.core.js"></script>
+   <script src="slick.grid.js"></script>
+  </head>
+  <body>
+    <h1>Unknown wikipedia tags found while WIWOSM-processing</h1>
+    <h2 id="created"></h2>
+    <p id="count">Objects in this list: </p>
+    <p>14.01.2013: Edit links are now available for potlatch2 and JOSM or Merkaator with Remotecontrol plugin.</p>
+    <p>12.01.2013: Now all wikipedia tags with undefined language like wikipedia=article are shown, too! Sorry for the big load!</p>
+
+    <div id="grid" style="width:1600px;height:800px;"></div>
+
+<script>
+
+$.getJSON('broken.php', function(json) {
+    $("#created").append(json.created);
+    $("#count").append(json.count);
+/*
+  var type;
+  $.each(json.items, function(i,item){
+    if (item["t"]=='n') { type='node'; }
+    if (item["t"]=='w') { type='way'; }
+    if (item["t"]=='r') { type='relation'; }
+    table.append($('<tr><td><a href="http://www.openstreetmap.org/browse/'+type+'/'+item["i"]+'">'+item["i"]+' ('+type+')</a></td><td><a href="http://www.openstreetmap.org/edit?editor=potlatch2&'+type+'='+item["i"]+'">Potlatch2</a>, <a href="http://127.0.0.1:8111/load_object?objects='+item["t"]+item["i"]+'">JOSM/Merkaator</a></td><td>'+item["l"]+'</td><td>'+item["a"]+'</td></tr>'));
+  });
+*/
+
+  function formatter(row, cell, value, columnDef, dataContext) {
+    return value;
+  }
+
+  var slickgrid;
+  var columns = [
+    {id: "id", name: "OSM-Object", field: "id", formatter: formatter},
+    {id: "editpotlatch", name: "Edit Potlatch2", field: "editpotlatch", formatter: formatter},
+    {id: "editjosm", name: "Edit JOSM/Merkaator", field: "editjosm", formatter: formatter},
+    {id: "language", name: "language", field: "language"},
+    {id: "article", name: "article", field: "article"}
+  ];
+
+  var options = {
+    enableCellNavigation: true,
+    enableColumnReorder: false,
+    defaultColumnWidth: 200,
+    fullWidthRows: true,
+    forceFitColumns: true
+  };
+
+  function getType(t) {
+    var type;
+      if (t=='n') { type='node'; }
+      if (t=='w') { type='way'; }
+      if (t=='r') { type='relation'; }
+    return type;
+  }
+
+  $(function () {
+    var data = [];
+    var item, type;
+    for (var i = 0; i < json.items.length; i++) {
+      item = json.items[i];
+      type = getType(item["t"]);
+      data[i] = {
+        id: '<a href="http://www.openstreetmap.org/browse/'+type+'/'+item["i"]+'">'+item["i"]+' ('+type+')</a>',
+        editpotlatch: '<a href="http://www.openstreetmap.org/edit?editor=potlatch2&'+type+'='+item["i"]+'">Potlatch2</a>',
+        editjosm: '<a href="http://127.0.0.1:8111/load_object?objects='+item["t"]+item["i"]+'">JOSM/Merkaator</a>',
+        language: item["l"],
+        article: item["a"]
+      };
+    }
+
+    slickgrid = new Slick.Grid("#grid", data, columns, options);
+  })
+/*
+  slickgrid.onClick.subscribe(function(e, args){
+    var cell = slickgrid.getCellFromEvent(e);
+    var item = json.items[cell.row];
+    var type = getType(item["t"]);
+    if (cell.cell == 0) {
+      window.open('http://www.openstreetmap.org/browse/'+type+'/'+item["i"]);
+    }
+    if (cell.cell == 1) {
+      window.open('http://www.openstreetmap.org/edit?editor=potlatch2&'+type+'='+item["i"]);
+    }
+    if (cell.cell == 2) {
+      window.open('http://127.0.0.1:8111/load_object?objects='+item["t"]+item["i"]);
+    }
+  });
+*/
+});
+</script>
+  </body>
+</html>
