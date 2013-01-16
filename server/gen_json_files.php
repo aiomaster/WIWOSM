@@ -20,7 +20,7 @@ if ($fullupdate) {
 }
 
 $wiwosm->updateWiwosmDB();
-$wiwosm->logUnknown();
+$wiwosm->logUnknownJSON();
 $wiwosm->processOsmItems();
 if ($fullupdate) $wiwosm->testAndRename();
 $wiwosm->exithandler();
