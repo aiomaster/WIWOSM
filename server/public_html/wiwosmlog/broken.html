@@ -3,57 +3,52 @@
   <head>
     <meta charset="UTF-8">
     <title>WIWOSM broken languages</title>
-  <link rel="stylesheet" href="slick.grid.css" type="text/css"/>
-  <link rel="stylesheet" href="jquery-ui-1.8.16.custom.css" type="text/css"/>
+  <link rel="stylesheet" href="SlickGrid/slick.grid.css" type="text/css"/>
+  <link rel="stylesheet" href="SlickGrid/css/smoothness/jquery-ui-1.8.16.custom.css" type="text/css"/>
 
-    <script src="//ajax.googleapis.com/ajax/libs/jquery/1/jquery.min.js"></script>
-    <script src="jquery.event.drag-2.0.min.js"></script>
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.8/jquery.min.js"></script>
+    <script src="SlickGrid/lib/jquery.event.drag-2.0.min.js"></script>
 
-   <script src="slick.core.js"></script>
-   <script src="slick.grid.js"></script>
+   <script src="SlickGrid/slick.core.js"></script>
+   <script src="SlickGrid/slick.grid.js"></script>
   </head>
   <body>
     <h1>Unknown wikipedia tags found while WIWOSM-processing</h1>
     <h2 id="created"></h2>
     <p id="count">Objects in this list: </p>
-    <p>14.01.2013: Edit links are now available for potlatch2 and JOSM or Merkaator with Remotecontrol plugin.</p>
-    <p>12.01.2013: Now all wikipedia tags with undefined language like wikipedia=article are shown, too! Sorry for the big load!</p>
+    <p>Note: You can get the raw data as <a href="broken.php">JSON</a>, too!</p>
+    <ul>
+      <li>12.01.2013: Now all wikipedia tags with undefined language like wikipedia=article are shown, too!</li>
+      <li>14.01.2013: Edit links are now available for potlatch2 and JOSM or Merkaator with Remotecontrol plugin.</li>
+      <li>15.01.2013: Handled the big load with <a href="https://github.com/mleibman/SlickGrid">SlickGrid</a>.</li>
+      <li>16.01.2013: Columns are sortable again.</li>
+    </ul>
 
     <div id="grid" style="width:1600px;height:800px;"></div>
 
 <script>
 
 $.getJSON('broken.php', function(json) {
-    $("#created").append(json.created);
-    $("#count").append(json.count);
-/*
-  var type;
-  $.each(json.items, function(i,item){
-    if (item["t"]=='n') { type='node'; }
-    if (item["t"]=='w') { type='way'; }
-    if (item["t"]=='r') { type='relation'; }
-    table.append($('<tr><td><a href="http://www.openstreetmap.org/browse/'+type+'/'+item["i"]+'">'+item["i"]+' ('+type+')</a></td><td><a href="http://www.openstreetmap.org/edit?editor=potlatch2&'+type+'='+item["i"]+'">Potlatch2</a>, <a href="http://127.0.0.1:8111/load_object?objects='+item["t"]+item["i"]+'">JOSM/Merkaator</a></td><td>'+item["l"]+'</td><td>'+item["a"]+'</td></tr>'));
-  });
-*/
+  $("#created").append(json.created);
+  $("#count").append(json.count);
 
   function formatter(row, cell, value, columnDef, dataContext) {
     return value;
   }
 
-  var slickgrid;
+  var grid;
   var columns = [
-    {id: "id", name: "OSM-Object", field: "id", formatter: formatter},
-    {id: "editpotlatch", name: "Edit Potlatch2", field: "editpotlatch", formatter: formatter},
-    {id: "editjosm", name: "Edit JOSM/Merkaator", field: "editjosm", formatter: formatter},
-    {id: "language", name: "language", field: "language"},
-    {id: "article", name: "article", field: "article"}
+    {id: "id", name: "OSM-Object", field: "id", width: 200, formatter: formatter, sortable: true},
+    {id: "editpotlatch", name: "Edit Potlatch2", field: "editpotlatch",width: 120, formatter: formatter},
+    {id: "editjosm", name: "Edit JOSM/Merkaator", field: "editjosm", width: 180, formatter: formatter},
+    {id: "language", name: "language", field: "language", width: 100, sortable: true},
+    {id: "article", name: "article", field: "article", width: 800, sortable: true}
   ];
 
   var options = {
     enableCellNavigation: true,
     enableColumnReorder: false,
-    defaultColumnWidth: 200,
-    fullWidthRows: true,
+    multiColumnSort: true,
     forceFitColumns: true
   };
 
@@ -80,24 +75,27 @@ $.getJSON('broken.php', function(json) {
       };
     }
 
-    slickgrid = new Slick.Grid("#grid", data, columns, options);
+    grid = new Slick.Grid("#grid", data, columns, options);
+    grid.onSort.subscribe(function (e, args) {
+      var cols = args.sortCols;
+
+      data.sort(function (dataRow1, dataRow2) {
+        for (var i = 0, l = cols.length; i < l; i++) {
+          var field = cols[i].sortCol.field;
+          var sign = cols[i].sortAsc ? 1 : -1;
+          var value1 = dataRow1[field], value2 = dataRow2[field];
+          var result = (value1 == value2 ? 0 : (value1 > value2 ? 1 : -1)) * sign;
+          if (result != 0) {
+            return result;
+          }
+        }
+        return 0;
+      });
+      grid.invalidate();
+      grid.render();
+    });
   })
-/*
-  slickgrid.onClick.subscribe(function(e, args){
-    var cell = slickgrid.getCellFromEvent(e);
-    var item = json.items[cell.row];
-    var type = getType(item["t"]);
-    if (cell.cell == 0) {
-      window.open('http://www.openstreetmap.org/browse/'+type+'/'+item["i"]);
-    }
-    if (cell.cell == 1) {
-      window.open('http://www.openstreetmap.org/edit?editor=potlatch2&'+type+'='+item["i"]);
-    }
-    if (cell.cell == 2) {
-      window.open('http://127.0.0.1:8111/load_object?objects='+item["t"]+item["i"]);
-    }
-  });
-*/
+
 });
 </script>
   </body>
