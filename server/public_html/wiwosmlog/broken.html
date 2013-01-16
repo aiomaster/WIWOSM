@@ -32,15 +32,20 @@ $.getJSON('broken.php', function(json) {
   $("#created").append(json.created);
   $("#count").append(json.count);
 
-  function formatter(row, cell, value, columnDef, dataContext) {
+  var formatter = function(row, cell, value, columnDef, dataContext) {
     return value;
-  }
+  };
+
+  var RowNumberFormatter = function(row, cell, value, columnDef, dataContext) {
+    return row + 1;
+  };
 
   var grid;
   var columns = [
+    {id: "rowNumber", name:"Row", field: "", formatter: RowNumberFormatter, width:80, resizable:false, unselectable:true, sortable:false},
     {id: "id", name: "OSM-Object", field: "id", width: 200, formatter: formatter, sortable: true},
-    {id: "editpotlatch", name: "Edit Potlatch2", field: "editpotlatch",width: 120, formatter: formatter},
-    {id: "editjosm", name: "Edit JOSM/Merkaator", field: "editjosm", width: 180, formatter: formatter},
+    {id: "editpotlatch", name: "Edit Potlatch2", field: "editpotlatch",width: 130, formatter: formatter},
+    {id: "editjosm", name: "Edit JOSM/Merkaator", field: "editjosm", width: 190, formatter: formatter},
     {id: "language", name: "language", field: "language", width: 100, sortable: true},
     {id: "article", name: "article", field: "article", width: 800, sortable: true}
   ];
