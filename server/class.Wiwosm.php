@@ -190,7 +190,7 @@ EOT;
 	 **/
 	function logUnknownJSON() {
 		// get all broken languages
-		$query = 'SELECT osm_id,lang,article,array_agg(ST_GeometryType(way)) AS geomtype FROM wiwosm WHERE lang_ref = -1 GROUP BY osm_id,lang,article';
+		$query = 'SELECT DISTINCT ON (osm_id) osm_id,lang,article,geomtype,iso2,name FROM ( SELECT osm_id,lang,article,array_agg(ST_GeometryType(way)) AS geomtype, ST_Transform(ST_SetSRID(ST_Extent(way),900913),4326) AS extent FROM wiwosm WHERE lang_ref = -1 GROUP BY osm_id,lang,article ) AS w LEFT JOIN wiwosm_tm_world_borders_simple ON ST_Intersects(extent, ST_SetSRID(geom,4326))';
 		$result = pg_query($this->conn,$query);
 		$count = pg_num_rows($result);
 		$json = '{"created":"'.date(DATE_RFC822).'","count":"'.$count.'","items":[';
@@ -206,6 +206,8 @@ EOT;
 			}
 			$r['l'] = $row['lang'];
 			$r['a'] = $row['article'];
+			$r['c'] = ''.$row['name'];
+			$r['s'] = ''.$row['iso2'];
 			$json .= json_encode($r).',';
 
 		}
@@ -230,10 +232,10 @@ EOT;
 		// if there are more than 100000
 		if ( $countFiles > 100000 ) {
 			rename(self::JSON_PATH . '_old',self::JSON_PATH . '_old_remove');
-			// let cronie remove the old directory
-			exec('qcronsub /home/master/cleanup.sh');
 			rename(self::JSON_PATH , self::JSON_PATH . '_old');
 			rename($this->json_path , self::JSON_PATH );
+			// let cronie remove the old directory
+			exec('qcronsub /home/master/cleanup.sh');
 		}
 
 	}

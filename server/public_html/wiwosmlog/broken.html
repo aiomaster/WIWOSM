@@ -22,6 +22,7 @@
       <li>14.01.2013: Edit links are now available for potlatch2 and JOSM or Merkaator with Remotecontrol plugin.</li>
       <li>15.01.2013: Handled the big load with <a href="https://github.com/mleibman/SlickGrid">SlickGrid</a>.</li>
       <li>16.01.2013: Columns are sortable again.</li>
+      <li>18.01.2013: Now I try to <b>guess</b> the country with <a href="http://en.wikipedia.org/wiki/ISO_3166-1_alpha-2">iso2 country code</a> by geographic match with <a href="http://thematicmapping.org/downloads/world_borders.php">World Borders Dataset</a>.For Performance reasons I use the simple boundaries, so there could be some mistakes near borders! This matching is just a hint. You should check that manually in every case!</li>
     </ul>
 
     <div id="grid" style="width:1600px;height:800px;"></div>
@@ -47,7 +48,9 @@ $.getJSON('broken.php', function(json) {
     {id: "editpotlatch", name: "Edit Potlatch2", field: "editpotlatch",width: 130, formatter: formatter},
     {id: "editjosm", name: "Edit JOSM/Merkaator", field: "editjosm", width: 190, formatter: formatter},
     {id: "language", name: "language", field: "language", width: 100, sortable: true},
-    {id: "article", name: "article", field: "article", width: 800, sortable: true}
+    {id: "article", name: "article", field: "article", width: 400, sortable: true},
+    {id: "guessedcountry", name: "Guessed country", field: "guessedcountry", width: 250, sortable: true},
+    {id: "guessediso", name: "Guessed iso2", field: "guessediso", width: 150, sortable: true}
   ];
 
   var options = {
@@ -76,7 +79,9 @@ $.getJSON('broken.php', function(json) {
         editpotlatch: '<a href="http://www.openstreetmap.org/edit?editor=potlatch2&'+type+'='+item["i"]+'">Potlatch2</a>',
         editjosm: '<a href="http://127.0.0.1:8111/load_object?objects='+item["t"]+item["i"]+'">JOSM/Merkaator</a>',
         language: item["l"],
-        article: item["a"]
+        article: item["a"],
+        guessedcountry: item["c"],
+        guessediso: item["s"]
       };
     }
 
