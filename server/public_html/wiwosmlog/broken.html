@@ -3,14 +3,15 @@
   <head>
     <meta charset="UTF-8">
     <title>WIWOSM broken languages</title>
-  <link rel="stylesheet" href="SlickGrid/slick.grid.css" type="text/css"/>
-  <link rel="stylesheet" href="SlickGrid/css/smoothness/jquery-ui-1.8.16.custom.css" type="text/css"/>
+    <link rel="stylesheet" href="SlickGrid/slick.grid.css" type="text/css"/>
+    <link rel="stylesheet" href="SlickGrid/css/smoothness/jquery-ui-1.8.16.custom.css" type="text/css"/>
 
     <script src="//ajax.googleapis.com/ajax/libs/jquery/1.8/jquery.min.js"></script>
     <script src="SlickGrid/lib/jquery.event.drag-2.0.min.js"></script>
 
-   <script src="SlickGrid/slick.core.js"></script>
-   <script src="SlickGrid/slick.grid.js"></script>
+    <script src="SlickGrid/slick.core.js"></script>
+    <script src="SlickGrid/slick.grid.js"></script>
+    <script src="SlickGrid/slick.dataview.js"></script>
   </head>
   <body>
     <h1>Unknown wikipedia tags found while WIWOSM-processing</h1>
@@ -23,11 +24,25 @@
       <li>15.01.2013: Handled the big load with <a href="https://github.com/mleibman/SlickGrid">SlickGrid</a>.</li>
       <li>16.01.2013: Columns are sortable again.</li>
       <li>18.01.2013: Now I try to <b>guess</b> the country with <a href="http://en.wikipedia.org/wiki/ISO_3166-1_alpha-2">iso2 country code</a> by geographic match with <a href="http://thematicmapping.org/downloads/world_borders.php">World Borders Dataset</a>.For Performance reasons I use the simple boundaries, so there could be some mistakes near borders! This matching is just a hint. You should check that manually in every case!</li>
+      <li>23.01.2013: You can use Quickfilters now, yeah!</li>
     </ul>
 
     <div id="grid" style="width:1600px;height:800px;"></div>
 
 <script>
+var columnFilters = {};
+var grid;
+function filter(item) {
+  for (var columnId in columnFilters) {
+    if (columnId !== undefined && columnFilters[columnId] !== "") {
+      var c = grid.getColumns()[grid.getColumnIndex(columnId)];
+      if (item[c.field].indexOf(columnFilters[columnId]) == -1) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
 
 $.getJSON('broken.php', function(json) {
   $("#created").append(json.created);
@@ -41,10 +56,12 @@ $.getJSON('broken.php', function(json) {
     return row + 1;
   };
 
-  var grid;
+  var dataView;
+
+  var data = [];
   var columns = [
-    {id: "rowNumber", name:"Row", field: "", formatter: RowNumberFormatter, width:80, resizable:false, unselectable:true, sortable:false},
-    {id: "id", name: "OSM-Object", field: "id", width: 200, formatter: formatter, sortable: true},
+    {id: "id", name:"Row", field: "id", formatter: RowNumberFormatter, width:80, resizable:false, unselectable:true, sortable:false},
+    {id: "oid", name: "OSM-Object", field: "oid", width: 200, formatter: formatter, sortable: true},
     {id: "editpotlatch", name: "Edit Potlatch2", field: "editpotlatch",width: 130, formatter: formatter},
     {id: "editjosm", name: "Edit JOSM/Merkaator", field: "editjosm", width: 190, formatter: formatter},
     {id: "language", name: "language", field: "language", width: 100, sortable: true},
@@ -57,7 +74,10 @@ $.getJSON('broken.php', function(json) {
     enableCellNavigation: true,
     enableColumnReorder: false,
     multiColumnSort: true,
-    forceFitColumns: true
+    forceFitColumns: true,
+    showHeaderRow: true,
+    headerRowHeight: 30,
+    explicitInitialization: true
   };
 
   function getType(t) {
@@ -69,13 +89,13 @@ $.getJSON('broken.php', function(json) {
   }
 
   $(function () {
-    var data = [];
     var item, type;
     for (var i = 0; i < json.items.length; i++) {
       item = json.items[i];
       type = getType(item["t"]);
       data[i] = {
-        id: '<a href="http://www.openstreetmap.org/browse/'+type+'/'+item["i"]+'">'+item["i"]+' ('+type+')</a>',
+        id: i,
+        oid: '<a href="http://www.openstreetmap.org/browse/'+type+'/'+item["i"]+'">'+item["i"]+' ('+type+')</a>',
         editpotlatch: '<a href="http://www.openstreetmap.org/edit?editor=potlatch2&'+type+'='+item["i"]+'">Potlatch2</a>',
         editjosm: '<a href="http://127.0.0.1:8111/load_object?objects='+item["t"]+item["i"]+'">JOSM/Merkaator</a>',
         language: item["l"],
@@ -84,12 +104,13 @@ $.getJSON('broken.php', function(json) {
         guessediso: item["s"]
       };
     }
+    var searchArray = ["oid", "language", "article", "guessedcountry", "guessediso"];
+    dataView = new Slick.Data.DataView({ inlineFilters: true });
+    grid = new Slick.Grid("#grid", dataView, columns, options);
 
-    grid = new Slick.Grid("#grid", data, columns, options);
     grid.onSort.subscribe(function (e, args) {
       var cols = args.sortCols;
-
-      data.sort(function (dataRow1, dataRow2) {
+      dataView.sort(function (dataRow1, dataRow2) {
         for (var i = 0, l = cols.length; i < l; i++) {
           var field = cols[i].sortCol.field;
           var sign = cols[i].sortAsc ? 1 : -1;
@@ -101,9 +122,45 @@ $.getJSON('broken.php', function(json) {
         }
         return 0;
       });
-      grid.invalidate();
+    });
+
+    // wire up model events to drive the grid
+    dataView.onRowCountChanged.subscribe(function (e, args) {
+      grid.updateRowCount();
       grid.render();
     });
+
+    dataView.onRowsChanged.subscribe(function (e, args) {
+      grid.invalidateRows(args.rows);
+      grid.render();
+    });
+
+    $(grid.getHeaderRow()).delegate(":input", "change keyup search", function (e) {
+      var columnId = $(this).data("columnId");
+      if (columnId != null) {
+        columnFilters[columnId] = $(this).val();
+        dataView.refresh();
+      }
+    });
+
+    grid.onHeaderRowCellRendered.subscribe(function(e, args) {
+        $(args.node).empty();
+        if ($.inArray(args.column.id, searchArray) != -1) {
+          $("<input type='search'>")
+             .data("columnId", args.column.id)
+             .val(columnFilters[args.column.id])
+             .appendTo(args.node);
+        }
+    });
+
+    grid.init();
+
+    // initialize the model after all the events have been hooked up
+    dataView.beginUpdate();
+    dataView.setItems(data);
+    dataView.setFilter(filter);
+    dataView.endUpdate();
+
   })
 
 });
