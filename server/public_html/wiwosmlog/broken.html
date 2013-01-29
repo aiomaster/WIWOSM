@@ -25,6 +25,7 @@
       <li>16.01.2013: Columns are sortable again.</li>
       <li>18.01.2013: Now I try to <b>guess</b> the country with <a href="http://en.wikipedia.org/wiki/ISO_3166-1_alpha-2">iso2 country code</a> by geographic match with <a href="http://thematicmapping.org/downloads/world_borders.php">World Borders Dataset</a>.For Performance reasons I use the simple boundaries, so there could be some mistakes near borders! This matching is just a hint. You should check that manually in every case!</li>
       <li>23.01.2013: You can use Quickfilters now, yeah!</li>
+      <li>29.01.2013: Quickfilters are case insensitive now.</li>
     </ul>
 
     <div id="grid" style="width:1600px;height:800px;"></div>
@@ -36,7 +37,7 @@ function filter(item) {
   for (var columnId in columnFilters) {
     if (columnId !== undefined && columnFilters[columnId] !== "") {
       var c = grid.getColumns()[grid.getColumnIndex(columnId)];
-      if (item[c.field].indexOf(columnFilters[columnId]) == -1) {
+      if (item[c.field].toLowerCase().indexOf(columnFilters[columnId].toLowerCase()) == -1) {
         return false;
       }
     }
