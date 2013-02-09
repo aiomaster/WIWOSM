@@ -96,13 +96,15 @@ class Wiwosm {
 	 * @param string $article the name of the article
 	 * @return string the absolute filepath for this lang and article 
 	 **/
-	function getFilePath($lang, $article) {
+	function getFilePath($lang, $article, $relativ = false) {
 		//$hash = md5($lang.str_replace('_',' ',$article));
 		// use fnvhash because its much faster than md5
 		$article = str_replace('_',' ',$article);
 		$hash = $this->fnvhash($lang.$article);
-		$path = $this->json_path.'/'.substr($hash,0,2).'/'.substr($hash,0,4);
-		if (!file_exists($path)) @mkdir($path, 0755, true);
+		$relpath = substr($hash,0,2).'/'.substr($hash,0,4);
+		$fullpath = $this->json_path.'/'.$relpath;
+		$path = ($relativ) ? $relpath : $fullpath;
+		if (!file_exists($fullpath)) @mkdir($fullpath, 0755, true);
 		$path .= '/'.$hash.'_'.substr(str_replace(array("\0",'/'),array('','-'),$lang.'_'.$article),0,230).'.geojson.gz';
 		unset($hash);
 		return $path;
@@ -231,11 +233,17 @@ EOT;
 		$countFiles = system('find '.$this->json_path.' -type f | wc -l');
 		// if there are more than 100000
 		if ( $countFiles > 100000 ) {
-			rename(self::JSON_PATH . '_old',self::JSON_PATH . '_old_remove');
-			rename(self::JSON_PATH , self::JSON_PATH . '_old');
-			rename($this->json_path , self::JSON_PATH );
+			//exec('mv -T ' . self::JSON_PATH . '_old ' . self::JSON_PATH . '_old_remove');
+			//exec('mv -T ' . self::JSON_PATH . ' ' . self::JSON_PATH . '_old');
+			//exec('mv -T ' . $this->json_path . ' ' . self::JSON_PATH );
+			//unlink(self::JSON_PATH);
+			//symlink($this->json_path,'geojsongz');
+			exec('ln -snf '.basename($this->json_path).' '.dirname($this->json_path).'/geojsongz');
+			//rename(self::JSON_PATH . '_old',self::JSON_PATH . '_old_remove');
+			//rename(self::JSON_PATH , self::JSON_PATH . '_old');
+			//rename($this->json_path , self::JSON_PATH );
 			// let cronie remove the old directory
-			exec('qcronsub /home/master/cleanup.sh');
+			//exec('rm -rf /mnt/user-store/wiwosm/geojsongz_old_remove &');
 		}
 
 	}
@@ -709,6 +717,8 @@ EOQ;
 		// check if we need an update of the Interwiki language links
 		if ($neednoIWLLupdate) return true;
 
+		// get the relativ filepath
+		$filepath = $this->getFilePath($lang,$article,true);
 		//$langarray = $this->queryInterWikiLanguages($lang,$article);
 		$langarray = self::hstoreToArray($lang_hstore);
 		// for every interwikilink do a hard link to the real file written above
@@ -716,8 +726,8 @@ EOQ;
 			if ($l != $lang) {
 				$linkpath = $this->getFilePath($l,$a);
 				@unlink($linkpath);
-				link($filepath,$linkpath);
-				unset($langrow,$linkpath);
+				symlink('../../'.$filepath,$linkpath);
+				unset($linkpath);
 			}
 		}
 		// free the memory
