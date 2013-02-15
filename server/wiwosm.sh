@@ -10,7 +10,7 @@
 #$ -e $HOME/log/wiwosm.err
 
 
-if [ `date +%u` -eq 3 ]
+if test `date +%u` -eq 3 
 then
 	php /home/master/gen_json_files.php full
 else

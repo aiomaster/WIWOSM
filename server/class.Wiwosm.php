@@ -718,15 +718,16 @@ EOQ;
 		if ($neednoIWLLupdate) return true;
 
 		// get the relativ filepath
-		$filepath = $this->getFilePath($lang,$article,true);
-		//$langarray = $this->queryInterWikiLanguages($lang,$article);
+		// $filepath = $this->getFilePath($lang,$article,true);
+
 		$langarray = self::hstoreToArray($lang_hstore);
 		// for every interwikilink do a hard link to the real file written above
 		foreach ($langarray as $l => $a) {
 			if ($l != $lang) {
 				$linkpath = $this->getFilePath($l,$a);
 				@unlink($linkpath);
-				symlink('../../'.$filepath,$linkpath);
+				//symlink('../../'.$filepath,$linkpath);
+				link($filepath,$linkpath);
 				unset($linkpath);
 			}
 		}

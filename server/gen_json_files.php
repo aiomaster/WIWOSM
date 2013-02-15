@@ -30,7 +30,7 @@ if (!$linkupdate) {
 	echo 'skip DB Update - doing linkupdate only'."\n";
 }
 $wiwosm->processOsmItems();
-if ($fullupdate) $wiwosm->testAndRename();
+if ($fullupdate || $linkupdate) $wiwosm->testAndRename();
 $wiwosm->exithandler();
 }
 
