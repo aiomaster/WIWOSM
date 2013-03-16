@@ -594,6 +594,57 @@ EOQ;
 		return $langarray;
 	}
 
+	function queryWikiDataLanguages($lang, $article) {
+		// if no lang or article is given, we can stop here
+		if (!$lang || !$article) return false;
+		//$this->lastarticle = str_replace(array(' ','\''),array('_','\\\''),$article);
+		$this->lastarticle = str_replace(' ','_',$article);
+		// just do a new connection if we get another lang than in loop before
+		if ($this->lastlang!=$lang) {
+			echo 'Try new lang:'.$lang."\n";
+			$this->lastlang=$lang;
+			if ($this->mysqliconn) {
+				if ($this->prep_mysql) $this->prep_mysql->close();
+				$this->mysqliconn->close();
+			}
+			// if the lang for example is fiu-vro the table is named fiu_vro so we have to replace - by _
+			$lang = str_replace('-','_',$lang);
+			$this->mysqliconn = new mysqli('wikidatawiki-p.db.toolserver.org', $this->toolserver_mycnf['user'], $this->toolserver_mycnf['password'], 'wikidatawiki_p');
+			if ($this->mysqliconn->connect_error) {
+				//$this->logUnknownLang($lang,$article);
+				// return that we should skip this lang because there are errors
+				return false;
+			} else {
+				$this->prep_mysql = $this->mysqliconn->prepare('SELECT `ips_site_id`,`ips_site_page`  FROM `wb_items_per_site` WHERE `ips_item_id` = (SELECT `ips_item_id` FROM `wb_items_per_site` WHERE `ips_site_id` = ? AND `ips_site_page` = ? LIMIT 1)');
+				// if we could not prepare the select statement we should skip this lang
+				if (!$this->prep_mysql) return false;
+				if (!$this->prep_mysql->bind_param('ss', $lang.'wiki', $this->lastarticle)) {
+					echo 'bind_param failed with lastarticle='.$this->lastarticle.': '.$this->prep_mysql->error."\n";
+					return false;
+				}
+			}
+		}
+		try {
+			if ($this->prep_mysql)
+			       	$this->prep_mysql->execute();
+			else {
+				echo 'article: '.$this->lastarticle."\n".'lang: '.$lang."\n--\n";
+				return false;
+			}
+			if (!$this->prep_mysql->bind_result($ll_lang,$ll_title)) {
+				echo 'bind_result failed with lastarticle='.$this->lastarticle.': '.$this->prep_mysql->error."\n";
+				return false;
+			}
+		} catch (Exception $e) {
+			echo $e->getMessage()."\n".'article: '.$this->lastarticle."\n".'lang: '.$lang."\n--\n";
+		}
+		$langarray = array();
+		while ($this->prep_mysql->fetch()) {
+			$langarray[$ll_lang] = $ll_title;
+		}
+		return $langarray;
+	}
+
 	function escape($str) {
 		return str_replace(array('\\','"'),array('\\\\','\\"'),$str);
 	}
