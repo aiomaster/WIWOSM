@@ -1,4 +1,4 @@
-<?php
+ <?php
 
 /**
  * Wiwosm main class
@@ -73,9 +73,17 @@ class Wiwosm {
 	}
 
 	/**
+	 * Open a mysql db connection to wikidata
+	 **/
+  function openMysqlConnection() {
+		$this->mysqliconn = new mysqli('wikidatawiki-p.db.toolserver.org', $this->toolserver_mycnf['user'], $this->toolserver_mycnf['password'], 'wikidatawiki_p');
+		$this->prep_mysql = $this->mysqliconn->prepare('SELECT `ips_item_id` `ips_site_id`,`ips_site_page`  FROM `wb_items_per_site` WHERE `ips_item_id` = (SELECT `ips_item_id` FROM `wb_items_per_site` WHERE `ips_site_id` = ? AND `ips_site_page` = ? LIMIT 1)');
+  }
+
+	/**
 	 * fnvhash funtion copied from http://code.google.com/p/boyanov/wiki/FNVHash
-	 * @param string $txt Input text to hash 
-	 * @return string FNVHash of text 
+	 * @param string $txt Input text to hash
+	 * @return string FNVHash of text
 	 **/
 	function fnvhash($txt) {
 		$buf = str_split($txt);
@@ -94,7 +102,7 @@ class Wiwosm {
 	 * so that a good distributed tree will result in the filesystem.
 	 * @param string $lang the language of the given article
 	 * @param string $article the name of the article
-	 * @return string the absolute filepath for this lang and article 
+	 * @return string the absolute filepath for this lang and article
 	 **/
 	function getFilePath($lang, $article, $relativ = false) {
 		//$hash = md5($lang.str_replace('_',' ',$article));
@@ -464,7 +472,7 @@ EOQ;
 					}
 
 				}
-			} 
+			}
 		}
 	}
 
@@ -508,36 +516,9 @@ EOQ;
 		}
 		// if it is already clean UTF-8 there should be no problems
 		return $str;
-	}
-/*
-	function queryInterWikiLanguages($lang, $article) {
-		// if no lang or article is given, we can stop here
-		if (!$lang || !$article) return false;
-		// just do a new connection if we get another lang than in loop before
-		if ($this->lastlang!=$lang) {
-			echo 'Try new lang:'.$lang."\n";
-			$this->lastlang=$lang;
-			mysql_close();
-			$db = mysql_connect($lang. 'wiki-p.db.toolserver.org', $this->toolserver_mycnf['user'], $this->toolserver_mycnf['password']); 
-			if (!$db || !mysql_select_db($lang. 'wiki_p')) {
-				//echo 'Could not fetch interwikilinks for lang ' . $row['lang'] . ' in article: '. $row['article'] . "\n" . mysql_error() . "\n";
-				$this->logUnknownLang($lang,$article);
-				// return that we should skip this lang because there are errors
-				return false;
-			}
-		}
-		$mysql = 'SELECT `ll_lang`,`ll_title` FROM `'.$lang.'wiki_p`.`langlinks` WHERE `ll_from` =(SELECT `page_id` FROM `'.$lang."wiki_p`.`page` WHERE `page_namespace`=0 AND `page_is_redirect`=0 AND `page_title` = '".str_replace(array(' ','\''),array('_','\\\''),$article)."' LIMIT 1) LIMIT 300; ";
+  }
 
-		$langarray = array();
-		$langres = mysql_query($mysql);
-		if ($langres !== false) {
-			while ($langrow = mysql_fetch_assoc($langres)) {
-				$langarray[$langrow['ll_lang']] = str_replace('_',' ',$langrow['ll_title']);
-			}
-		}
-		return $langarray;
-	}
-*/
+
 	function queryInterWikiLanguages($lang, $article) {
 		// if no lang or article is given, we can stop here
 		if (!$lang || !$article) return false;
@@ -596,53 +577,26 @@ EOQ;
 
 	function queryWikiDataLanguages($lang, $article) {
 		// if no lang or article is given, we can stop here
-		if (!$lang || !$article) return false;
-		//$this->lastarticle = str_replace(array(' ','\''),array('_','\\\''),$article);
-		$this->lastarticle = str_replace(' ','_',$article);
-		// just do a new connection if we get another lang than in loop before
-		if ($this->lastlang!=$lang) {
-			echo 'Try new lang:'.$lang."\n";
-			$this->lastlang=$lang;
-			if ($this->mysqliconn) {
-				if ($this->prep_mysql) $this->prep_mysql->close();
-				$this->mysqliconn->close();
-			}
-			// if the lang for example is fiu-vro the table is named fiu_vro so we have to replace - by _
-			$lang = str_replace('-','_',$lang);
-			$this->mysqliconn = new mysqli('wikidatawiki-p.db.toolserver.org', $this->toolserver_mycnf['user'], $this->toolserver_mycnf['password'], 'wikidatawiki_p');
-			if ($this->mysqliconn->connect_error) {
-				//$this->logUnknownLang($lang,$article);
-				// return that we should skip this lang because there are errors
-				return false;
-			} else {
-				$this->prep_mysql = $this->mysqliconn->prepare('SELECT `ips_site_id`,`ips_site_page`  FROM `wb_items_per_site` WHERE `ips_item_id` = (SELECT `ips_item_id` FROM `wb_items_per_site` WHERE `ips_site_id` = ? AND `ips_site_page` = ? LIMIT 1)');
-				// if we could not prepare the select statement we should skip this lang
-				if (!$this->prep_mysql) return false;
-				if (!$this->prep_mysql->bind_param('ss', $lang.'wiki', $this->lastarticle)) {
-					echo 'bind_param failed with lastarticle='.$this->lastarticle.': '.$this->prep_mysql->error."\n";
-					return false;
-				}
-			}
-		}
-		try {
-			if ($this->prep_mysql)
-			       	$this->prep_mysql->execute();
-			else {
-				echo 'article: '.$this->lastarticle."\n".'lang: '.$lang."\n--\n";
-				return false;
-			}
-			if (!$this->prep_mysql->bind_result($ll_lang,$ll_title)) {
-				echo 'bind_result failed with lastarticle='.$this->lastarticle.': '.$this->prep_mysql->error."\n";
-				return false;
-			}
-		} catch (Exception $e) {
-			echo $e->getMessage()."\n".'article: '.$this->lastarticle."\n".'lang: '.$lang."\n--\n";
-		}
+    if (!$lang || !$article) return false;
+
+		// if the lang for example is fiu-vro the site is named fiu_vrowiki so we have to replace - by _
+    $lang = str_replace('-','_',$lang).'wiki';
+
+		if (!$this->prep_mysql->bind_param('ss', $lang, $article)) {
+			echo 'bind_param failed with lang="'.$lang.'" and article="'.$article.'": '.$this->prep_mysql->error."\n";
+			return false;
+    }
+
+		if (!$this->prep_mysql->bind_result($wd_id, $ll_lang,$ll_title)) {
+			echo 'bind_result failed with lastarticle='.$this->lastarticle.': '.$this->prep_mysql->error."\n";
+			return false;
+    }
+
 		$langarray = array();
 		while ($this->prep_mysql->fetch()) {
-			$langarray[$ll_lang] = $ll_title;
+			$langarray[substr($ll_lang, 0, -4)] = $ll_title;
 		}
-		return $langarray;
+		return array($wd_id, $langarray);
 	}
 
 	function escape($str) {
@@ -676,7 +630,7 @@ EOQ;
 		if ($result === false) $this->exithandler();
 
 		// insert a new line in wiwosm_wiki_ll. We have to give the datatype for the text[][] explicit here so we can't use pg_prepare
-		$result = pg_query($this->conn,'PREPARE insert_wiwosm_wiki_ll (text,text,text[][]) AS INSERT INTO wiwosm_wiki_ll (lang_id,lang_origin,article_origin,languages) VALUES (DEFAULT,$1,$2,hstore($3)) RETURNING lang_id');
+		$result = pg_query($this->conn,'PREPARE insert_wiwosm_wiki_ll (text,text,text[][],int) AS INSERT INTO wiwosm_wiki_ll (lang_id,lang_origin,article_origin,languages,wikidata_id) VALUES (DEFAULT,$1,$2,hstore($3),$4) RETURNING lang_id');
 		if ($result === false) $this->exithandler();
 
 		// update the lang_ref column in wiwosm table by using the current row from updatelangcur cursor
@@ -706,15 +660,14 @@ EOQ;
 					$lang_id = pg_fetch_result($result,0,0);
 				} else {
 					// if there was no such entry we have to query the interwikilinks mysql db
-					$langarray = $this->queryInterWikiLanguages($lang,$article);
+					$langarray = $this->queryWikidataLanguages($lang,$article);
 					if ($langarray !== false) {
-						$langarray[$lang] = $article;
 						$hstorestring = '{';
-						foreach ($langarray as $l => $a) {
+						foreach ($langarray[1] as $l => $a) {
 							$hstorestring .= '{"'.$this->escape($l).'","'.$this->escape($a).'"},';
 						}
 						$hstorestring = rtrim($hstorestring,',').'}';
-						$idres = pg_execute($this->conn,'insert_wiwosm_wiki_ll',array($lang,$article,$hstorestring));
+						$idres = pg_execute($this->conn,'insert_wiwosm_wiki_ll',array($lang,$article,$hstorestring,$langarray[0]));
 						if ($idres && pg_num_rows($idres) == 1 ) {
 							$lang_id = pg_fetch_result($idres,0,0);
 						}
@@ -739,7 +692,8 @@ CREATE TABLE wiwosm_wiki_ll (
 	lang_id serial PRIMARY KEY,
 	lang_origin text,
 	article_origin text,
-	languages hstore
+  languages hstore,
+  wikidata_id int
 )
 ;
 ALTER TABLE wiwosm_wiki_ll OWNER TO master;
@@ -867,5 +821,5 @@ EOQ;
 		pg_query($this->conn,'COMMIT WORK');
 	}
 
-} 
+}
 ?>
