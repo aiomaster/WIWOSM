@@ -10,7 +10,8 @@ class Wiwosm {
 
 	private $toolserver_mycnf;
 
-	//$alllang = array('aa','ab','ace','af','ak','als','am','an','ang','ar','arc','arz','as','ast','av','ay','az','ba','bar','bat-smg','bcl','be','be-x-old','bg','bh','bi','bjn','bm','bn','bo','bpy','br','bs','bug','bxr','ca','cbk-zam','cdo','ce','ceb','ch','cho','chr','chy','ckb','co','cr','crh','cs','csb','cu','cv','cy','cz','da','de','diq','dk','dsb','dv','dz','ee','el','eml','en','eo','epo','es','et','eu','ext','fa','ff','fi','fiu-vro','fj','fo','fr','frp','frr','fur','fy','ga','gag','gan','gd','gl','glk','gn','got','gu','gv','ha','hak','haw','he','hi','hif','ho','hr','hsb','ht','hu','hy','hz','ia','id','ie','ig','ii','ik','ilo','io','is','it','iu','ja','jbo','jp','jv','ka','kaa','kab','kbd','kg','ki','kj','kk','kl','km','kn','ko','koi','kr','krc','ks','ksh','ku','kv','kw','ky','la','lad','lb','lbe','lg','li','lij','lmo','ln','lo','lt','ltg','lv','map-bms','mdf','mg','mh','mhr','mi','minnan','mk','ml','mn','mo','mr','mrj','ms','mt','mus','mwl','my','myv','mzn','na','nah','nan','nap','nb','nds','nds-nl','ne','new','ng','nl','nn','no','nov','nrm','nv','ny','oc','om','or','os','pa','pag','pam','pap','pcd','pdc','pfl','pi','pih','pl','pms','pnb','pnt','ps','pt','qu','rm','rmy','rn','ro','roa-rup','roa-tara','ru','rue','rw','sa','sah','sc','scn','sco','sd','se','sg','sh','si','simple','sk','sl','sm','sn','so','sq','sr','srn','ss','st','stq','su','sv','sw','szl','ta','te','tet','tg','th','ti','tk','tl','tn','to','tpi','tr','ts','tt','tum','tw','ty','udm','ug','uk','ur','uz','ve','vec','vi','vls','vo','wa','war','wo','wuu','xal','xh','xmf','yi','yo','za','zea','zh','zh-cfr','zh-classical','zh-min-nan','zh-yue','zu');
+	//$alllang = array('aa','ab','ace','af','ak','als','am','an','ang','ar','arc','arz','as','ast','av','ay','az','ba','bar','bat-smg','bcl','be','be-x-old','bg','bh','bi','bjn','bm','bn','bo','bpy','br','bs','bug','bxr','ca','cbk-zam','cdo','ce','ceb','ch','cho','chr','chy','ckb','co','cr','crh','cs','csb','cu','cv','cy','cz','da','de','diq','dk','dsb','dv','dz','ee','el','eml','en','eo','epo','es','et','eu','ext','fa','ff','fi','fiu-vro','fj','fo','fr','frp','frr','fur','fy','ga','gag','gan','gd','gl','glk','gn','got','gu','gv','ha','hak','haw','he','hi','hif','ho','hr','hsb','ht','hu','hy','hz','ia','id','ie','ig','ii','ik','ilo','io','is','it','iu','ja','jbo','jp','jv','ka','kaa','kab','kbd','kg','ki','kj','kk','kl','km','kn','ko','koi','kr','krc','ks','ksh','ku','kv','kw','ky','la','lad','lb','lbe','lg','li','lij','lmo','ln','lo','lt','ltg','lv','map-bms','mdf','mg','mh','mhr','mi','minnan','mk','ml','mn','mo','mr','mrj','ms','mt','mus','mwl','my','myv','mzn','na','nah','nan','nap','nb','nds','nds-nl','ne',
+'new','ng','nl','nn','no','nov','nrm','nv','ny','oc','om','or','os','pa','pag','pam','pap','pcd','pdc','pfl','pi','pih','pl','pms','pnb','pnt','ps','pt','qu','rm','rmy','rn','ro','roa-rup','roa-tara','ru','rue','rw','sa','sah','sc','scn','sco','sd','se','sg','sh','si','simple','sk','sl','sm','sn','so','sq','sr','srn','ss','st','stq','su','sv','sw','szl','ta','te','tet','tg','th','ti','tk','tl','tn','to','tpi','tr','ts','tt','tum','tw','ty','udm','ug','uk','ur','uz','ve','vec','vi','vls','vo','wa','war','wo','wuu','xal','xh','xmf','yi','yo','za','zea','zh','zh-cfr','zh-classical','zh-min-nan','zh-yue','zu');
 
 	const simplifyGeoJSON = 'ST_AsGeoJSON(
 		CASE
@@ -77,7 +78,7 @@ class Wiwosm {
 	 **/
   function openMysqlConnection() {
 		$this->mysqliconn = new mysqli('wikidatawiki-p.db.toolserver.org', $this->toolserver_mycnf['user'], $this->toolserver_mycnf['password'], 'wikidatawiki_p');
-		$this->prep_mysql = $this->mysqliconn->prepare('SELECT `ips_item_id` `ips_site_id`,`ips_site_page`  FROM `wb_items_per_site` WHERE `ips_item_id` = (SELECT `ips_item_id` FROM `wb_items_per_site` WHERE `ips_site_id` = ? AND `ips_site_page` = ? LIMIT 1)');
+		$this->prep_mysql = $this->mysqliconn->prepare('SELECT `ips_item_id`,`ips_site_id`,`ips_site_page`  FROM `wb_items_per_site` WHERE `ips_item_id` = (SELECT `ips_item_id` FROM `wb_items_per_site` WHERE `ips_site_id` = ? AND `ips_site_page` = ? LIMIT 1)');
   }
 
 	/**
@@ -575,7 +576,7 @@ EOQ;
 		return $langarray;
 	}
 
-	function queryWikiDataLanguages($lang, $article) {
+	function queryWikidataLanguages($lang, $article) {
 		// if no lang or article is given, we can stop here
     if (!$lang || !$article) return false;
 
@@ -666,7 +667,7 @@ EOQ;
 						foreach ($langarray[1] as $l => $a) {
 							$hstorestring .= '{"'.$this->escape($l).'","'.$this->escape($a).'"},';
 						}
-						$hstorestring = rtrim($hstorestring,',').'}';
+						$hstorestring .= '{"wikidata","Q'.$langarray[0].'"}'.'}';
 						$idres = pg_execute($this->conn,'insert_wiwosm_wiki_ll',array($lang,$article,$hstorestring,$langarray[0]));
 						if ($idres && pg_num_rows($idres) == 1 ) {
 							$lang_id = pg_fetch_result($idres,0,0);
@@ -692,8 +693,8 @@ CREATE TABLE wiwosm_wiki_ll (
 	lang_id serial PRIMARY KEY,
 	lang_origin text,
 	article_origin text,
-  languages hstore,
-  wikidata_id int
+	languages hstore,
+	wikidata_id int
 )
 ;
 ALTER TABLE wiwosm_wiki_ll OWNER TO master;
