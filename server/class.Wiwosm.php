@@ -76,10 +76,10 @@ class Wiwosm {
 	/**
 	 * Open a mysql db connection to wikidata
 	 **/
-  function openMysqlConnection() {
+	function openMysqlConnection() {
 		$this->mysqliconn = new mysqli('wikidatawiki-p.db.toolserver.org', $this->toolserver_mycnf['user'], $this->toolserver_mycnf['password'], 'wikidatawiki_p');
 		$this->prep_mysql = $this->mysqliconn->prepare('SELECT `ips_item_id`,`ips_site_id`,`ips_site_page`  FROM `wb_items_per_site` WHERE `ips_item_id` = (SELECT `ips_item_id` FROM `wb_items_per_site` WHERE `ips_site_id` = ? AND `ips_site_page` = ? LIMIT 1)');
-  }
+	}
 
 	/**
 	 * fnvhash funtion copied from http://code.google.com/p/boyanov/wiki/FNVHash
@@ -578,24 +578,24 @@ EOQ;
 
 	function queryWikidataLanguages($lang, $article) {
 		// if no lang or article is given, we can stop here
-    if (!$lang || !$article) return false;
+		if (!$lang || !$article) return false;
 
 		// if the lang for example is fiu-vro the site is named fiu_vrowiki so we have to replace - by _
-    $lang = str_replace('-','_',$lang).'wiki';
+		$lang = str_replace('-','_',$lang).'wiki';
 
 		if (!$this->prep_mysql->bind_param('ss', $lang, $article)) {
 			echo 'bind_param failed with lang="'.$lang.'" and article="'.$article.'": '.$this->prep_mysql->error."\n";
 			return false;
-    }
+		}
 
 		if (!$this->prep_mysql->bind_result($wd_id, $ll_lang,$ll_title)) {
 			echo 'bind_result failed with lastarticle='.$this->lastarticle.': '.$this->prep_mysql->error."\n";
 			return false;
-    }
+		}
 
 		$langarray = array();
 		while ($this->prep_mysql->fetch()) {
-			$langarray[substr($ll_lang, 0, -4)] = $ll_title;
+			$langarray[str_replace('wiki', '', $ll_lang)] = $ll_title;
 		}
 		return array($wd_id, $langarray);
 	}
