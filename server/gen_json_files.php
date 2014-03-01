@@ -12,14 +12,14 @@ $linkupdate = ($argc > 1) && ($argv[1] == 'link');
 
 echo date(DATE_RFC822)."\n";
 
-$wiwosm = new Wiwosm();
+$wiwosm = new Wiwosm(true, $fullupdate);
 
 $defaultpath = $wiwosm->json_path;
 
 if ($fullupdate) {
 	$wiwosm->json_path = dirname($defaultpath).'/'.date('Y-m-d_H-i').'_geojsongz';
 	echo 'doing full update'."\n";
-#	$wiwosm->createLangTable();
+	$wiwosm->createLangTable();
 }
 
 if (!$linkupdate) {
@@ -31,7 +31,6 @@ if (!$linkupdate) {
 }
 $wiwosm->processOsmItems();
 if ($fullupdate || $linkupdate) $wiwosm->testAndRename();
-$wiwosm->exithandler();
 }
 
 ?>

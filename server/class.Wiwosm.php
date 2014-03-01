@@ -3,15 +3,14 @@
 /**
  * Wiwosm main class
  * @author Christoph Wagner
- * @version 1.0
+ * @version 1.5
  */
 
 class Wiwosm {
 
 	private $toolserver_mycnf;
 
-	//$alllang = array('aa','ab','ace','af','ak','als','am','an','ang','ar','arc','arz','as','ast','av','ay','az','ba','bar','bat-smg','bcl','be','be-x-old','bg','bh','bi','bjn','bm','bn','bo','bpy','br','bs','bug','bxr','ca','cbk-zam','cdo','ce','ceb','ch','cho','chr','chy','ckb','co','cr','crh','cs','csb','cu','cv','cy','cz','da','de','diq','dk','dsb','dv','dz','ee','el','eml','en','eo','epo','es','et','eu','ext','fa','ff','fi','fiu-vro','fj','fo','fr','frp','frr','fur','fy','ga','gag','gan','gd','gl','glk','gn','got','gu','gv','ha','hak','haw','he','hi','hif','ho','hr','hsb','ht','hu','hy','hz','ia','id','ie','ig','ii','ik','ilo','io','is','it','iu','ja','jbo','jp','jv','ka','kaa','kab','kbd','kg','ki','kj','kk','kl','km','kn','ko','koi','kr','krc','ks','ksh','ku','kv','kw','ky','la','lad','lb','lbe','lg','li','lij','lmo','ln','lo','lt','ltg','lv','map-bms','mdf','mg','mh','mhr','mi','minnan','mk','ml','mn','mo','mr','mrj','ms','mt','mus','mwl','my','myv','mzn','na','nah','nan','nap','nb','nds','nds-nl','ne',
-'new','ng','nl','nn','no','nov','nrm','nv','ny','oc','om','or','os','pa','pag','pam','pap','pcd','pdc','pfl','pi','pih','pl','pms','pnb','pnt','ps','pt','qu','rm','rmy','rn','ro','roa-rup','roa-tara','ru','rue','rw','sa','sah','sc','scn','sco','sd','se','sg','sh','si','simple','sk','sl','sm','sn','so','sq','sr','srn','ss','st','stq','su','sv','sw','szl','ta','te','tet','tg','th','ti','tk','tl','tn','to','tpi','tr','ts','tt','tum','tw','ty','udm','ug','uk','ur','uz','ve','vec','vi','vls','vo','wa','war','wo','wuu','xal','xh','xmf','yi','yo','za','zea','zh','zh-cfr','zh-classical','zh-min-nan','zh-yue','zu');
+	//$alllang = array('aa','ab','ace','af','ak','als','am','an','ang','ar','arc','arz','as','ast','av','ay','az','ba','bar','bat-smg','bcl','be','be-x-old','bg','bh','bi','bjn','bm','bn','bo','bpy','br','bs','bug','bxr','ca','cbk-zam','cdo','ce','ceb','ch','cho','chr','chy','ckb','co','cr','crh','cs','csb','cu','cv','cy','cz','da','de','diq','dk','dsb','dv','dz','ee','el','eml','en','eo','epo','es','et','eu','ext','fa','ff','fi','fiu-vro','fj','fo','fr','frp','frr','fur','fy','ga','gag','gan','gd','gl','glk','gn','got','gu','gv','ha','hak','haw','he','hi','hif','ho','hr','hsb','ht','hu','hy','hz','ia','id','ie','ig','ii','ik','ilo','io','is','it','iu','ja','jbo','jp','jv','ka','kaa','kab','kbd','kg','ki','kj','kk','kl','km','kn','ko','koi','kr','krc','ks','ksh','ku','kv','kw','ky','la','lad','lb','lbe','lg','li','lij','lmo','ln','lo','lt','ltg','lv','map-bms','mdf','mg','mh','mhr','mi','minnan','mk','ml','mn','mo','mr','mrj','ms','mt','mus','mwl','my','myv','mzn','na','nah','nan','nap','nb','nds','nds-nl','ne','new','ng','nl','nn','no','nov','nrm','nv','ny','oc','om','or','os','pa','pag','pam','pap','pcd','pdc','pfl','pi','pih','pl','pms','pnb','pnt','ps','pt','qu','rm','rmy','rn','ro','roa-rup','roa-tara','ru','rue','rw','sa','sah','sc','scn','sco','sd','se','sg','sh','si','simple','sk','sl','sm','sn','so','sq','sr','srn','ss','st','stq','su','sv','sw','szl','ta','te','tet','tg','th','ti','tk','tl','tn','to','tpi','tr','ts','tt','tum','tw','ty','udm','ug','uk','ur','uz','ve','vec','vi','vls','vo','wa','war','wo','wuu','xal','xh','xmf','yi','yo','za','zea','zh','zh-cfr','zh-classical','zh-min-nan','zh-yue','zu');
 
 	const simplifyGeoJSON = 'ST_AsGeoJSON(
 		CASE
@@ -26,7 +25,7 @@ class Wiwosm {
 	const JSON_PATH = '/mnt/user-store/wiwosm/geojsongz';
 	public $json_path;
 
-	private $conn;
+	private $pgconn;
 
 	private $mysqliconn;
 	private $prep_mysql;
@@ -39,27 +38,34 @@ class Wiwosm {
 	 * This is what to do on creating a Wiwosm object
 	 * (start timer, parse ini file for db connection … )
 	 **/
-	function __construct() {
+	function __construct($dbconn = true, $mysqlconn = false) {
 		$this->start = microtime(true);
+		$this->pgconn = false;
 		$this->mysqliconn = false;
+		if ($dbconn) {
+			$this->toolserver_mycnf = parse_ini_file("/home/".get_current_user()."/.my.cnf");
+			$this->openPgConnection();
+			if ($mysqlconn) {
+				$this->openMysqlConnection();
+			}
+		}
 		$this->json_path = self::JSON_PATH;
-		$this->toolserver_mycnf = parse_ini_file("/home/".get_current_user()."/.my.cnf");
-		$this->openPgConnection();
 	}
 
 	/**
 	 * This is what to do before exiting this program
 	 * (output time and memory consumption, close all db connections … )
 	 **/
-	function exithandler() {
+	function __destruct() {
 		echo 'Execution time: '.((microtime(true)-$this->start)/60)."min\n";
 		echo 'Peak memory usage: '.(memory_get_peak_usage(true)/1024/1024)."MB\n";
-		pg_close($this->conn);
+		if ($this->pgconn) {
+			pg_close($this->pgconn);
+		}
 		if ($this->mysqliconn) {
 			if ($this->prep_mysql) $this->prep_mysql->close();
 			$this->mysqliconn->close();
 		}
-		exit;
 	}
 
 	/**
@@ -67,10 +73,10 @@ class Wiwosm {
 	 **/
 	function openPgConnection() {
 		// open psql connection
-		$this->conn = pg_connect('host=sql-mapnik dbname=osm_mapnik');
+		$this->pgconn = pg_connect('host=sql-mapnik dbname=osm_mapnik');
 		// check for connection error
 		if($e = pg_last_error()) trigger_error($e, E_USER_ERROR);
-		//pg_set_client_encoding($this->conn, UNICODE);
+		//pg_set_client_encoding($this->pgconn, UNICODE);
 	}
 
 	/**
@@ -78,6 +84,10 @@ class Wiwosm {
 	 **/
 	function openMysqlConnection() {
 		$this->mysqliconn = new mysqli('wikidatawiki-p.db.toolserver.org', $this->toolserver_mycnf['user'], $this->toolserver_mycnf['password'], 'wikidatawiki_p');
+		if (mysqli_connect_errno()) {
+			echo 'Mysql connection failed: '.mysqli_connect_error()."\n";
+			exit();
+		}
 		$this->prep_mysql = $this->mysqliconn->prepare('SELECT `ips_item_id`,`ips_site_id`,`ips_site_page`  FROM `wb_items_per_site` WHERE `ips_item_id` = (SELECT `ips_item_id` FROM `wb_items_per_site` WHERE `ips_site_id` = ? AND `ips_site_page` = ? LIMIT 1)');
 	}
 
@@ -135,7 +145,7 @@ class Wiwosm {
 		$htmlrows = '';
 		// get all broken languages
 		$query = 'SELECT osm_id,lang,article,array_agg(ST_GeometryType(way)) AS geomtype FROM wiwosm WHERE lang_ref = -1 GROUP BY osm_id,lang,article';
-		$result = pg_query($this->conn,$query);
+		$result = pg_query($this->pgconn,$query);
 		$count = pg_num_rows($result);
 		while ($row = pg_fetch_assoc($result)) {
 			$osm_id = $row['osm_id'];
@@ -202,7 +212,7 @@ EOT;
 	function logUnknownJSON() {
 		// get all broken languages
 		$query = 'SELECT DISTINCT ON (osm_id) osm_id,lang,article,geomtype,iso2,name FROM ( SELECT osm_id,lang,article,array_agg(ST_GeometryType(way)) AS geomtype, ST_Transform(ST_SetSRID(ST_Extent(way),900913),4326) AS extent FROM wiwosm WHERE lang_ref = -1 GROUP BY osm_id,lang,article ) AS w LEFT JOIN wiwosm_tm_world_borders_simple ON ST_Intersects(extent, ST_SetSRID(geom,4326))';
-		$result = pg_query($this->conn,$query);
+		$result = pg_query($this->pgconn,$query);
 		$count = pg_num_rows($result);
 		$json = '{"created":"'.date(DATE_RFC822).'","count":"'.$count.'","items":[';
 		$r = array();
@@ -265,7 +275,7 @@ $query = <<<EOQ
 CREATE INDEX geom_index ON wiwosm USING GIST ( way ); -- geometry index
 CREATE INDEX article_lang_index ON wiwosm (article, lang ASC); -- index on articles and languages
 EOQ;
-		pg_query($this->conn,$query);
+		pg_query($this->pgconn,$query);
 	}
 
 	/**
@@ -311,10 +321,10 @@ UPDATE wiwosm SET lang_ref=-1 WHERE lang = ANY (ARRAY['','http','subject','name'
 COMMIT;
 EOQ;
 
-		pg_query($this->conn,$query);
+		pg_query($this->pgconn,$query);
 		if($e = pg_last_error()) {
 			trigger_error($e, E_USER_ERROR);
-			$this->exithandler();
+			exit();
 		} else {
 			echo 'wiwosm DB basic table build in '.((microtime(true)-$this->start)/60)." min\nStarting additional relation adding …\n";
 			$this->addMissingRelationObjects();
@@ -361,7 +371,7 @@ EOQ;
 
 			$newrelscsv = implode(',',$newrelscomplement);
 
-			$result = pg_execute($this->conn,'get_existing_member_relations',array('{'.$newrelscsv.'}'));
+			$result = pg_execute($this->pgconn,'get_existing_member_relations',array('{'.$newrelscsv.'}'));
 			$existingrels = ($result) ? pg_fetch_all_columns($result, 0) : array();
 			// we can simply add the existing relations with there negative id as if they were nodes or ways
 			$nodelist = array_merge($nodelist,$existingrels);
@@ -377,7 +387,7 @@ EOQ;
 				}
 				$othersubrelscsv = substr($othersubrelscsv,1);
 
-				$res = pg_execute($this->conn,'get_member_relations_planet_rels',array('{'.$othersubrelscsv.'}'));
+				$res = pg_execute($this->pgconn,'get_member_relations_planet_rels',array('{'.$othersubrelscsv.'}'));
 				if ($res) {
 					// fetch all members of all subrelations and combine them to one csv string
 					$allsubmembers = pg_fetch_all_columns($res, 0);
@@ -402,32 +412,32 @@ EOQ;
 		// prepare some often used queries:
 
 		// search for existing relations that are build in osm2pgsql default scheme ( executed in getAllMembers function!)
-		$result = pg_prepare($this->conn,'get_existing_member_relations','SELECT DISTINCT osm_id FROM (
+		$result = pg_prepare($this->pgconn,'get_existing_member_relations','SELECT DISTINCT osm_id FROM (
 			(SELECT osm_id FROM planet_point WHERE osm_id = ANY ($1))
 			UNION (SELECT osm_id FROM planet_line WHERE osm_id = ANY ($1))
 			UNION (SELECT osm_id FROM planet_polygon WHERE osm_id = ANY ($1))
 		) AS existing');
-		if ($result === false) $this->exithandler();
+		if ($result === false) exit();
 
 		// fetch all members of all subrelations and combine them to one csv string ( executed in getAllMembers function!)
-		$result = pg_prepare($this->conn,'get_member_relations_planet_rels','SELECT members FROM planet_rels WHERE id = ANY ($1)');
-		if ($result === false) $this->exithandler();
+		$result = pg_prepare($this->pgconn,'get_member_relations_planet_rels','SELECT members FROM planet_rels WHERE id = ANY ($1)');
+		if ($result === false) exit();
 
 		// insert ways and polygons in wiwosm
-		$result = pg_prepare($this->conn,'insert_relways_wiwosm','INSERT INTO wiwosm SELECT $1 AS osm_id, ST_Collect(way) AS way , $2 AS lang, $3 AS article, $4 AS anchor FROM (
+		$result = pg_prepare($this->pgconn,'insert_relways_wiwosm','INSERT INTO wiwosm SELECT $1 AS osm_id, ST_Collect(way) AS way , $2 AS lang, $3 AS article, $4 AS anchor FROM (
 			(SELECT way FROM planet_polygon WHERE osm_id = ANY ($5) )
 			UNION ( SELECT way FROM planet_line WHERE osm_id = ANY ($5) AND NOT EXISTS (SELECT 1 FROM planet_polygon WHERE planet_polygon.osm_id = planet_line.osm_id) )
 			) AS members');
-		if ($result === false) $this->exithandler();
+		if ($result === false) exit();
 
 		// insert nodes in wiwosm
-		$result = pg_prepare($this->conn,'insert_relnodes_wiwosm','INSERT INTO wiwosm SELECT $1 AS osm_id, ST_Collect(way) AS way , $2 AS lang, $3 AS article, $4 AS anchor FROM (
+		$result = pg_prepare($this->pgconn,'insert_relnodes_wiwosm','INSERT INTO wiwosm SELECT $1 AS osm_id, ST_Collect(way) AS way , $2 AS lang, $3 AS article, $4 AS anchor FROM (
 			(SELECT way FROM planet_point WHERE osm_id = ANY ($5) )
 			) AS members');
-		if ($result === false) $this->exithandler();
+		if ($result === false) exit();
 
 		$query = "SELECT id,members,tags FROM planet_rels WHERE strpos(array_to_string(tags,','),'wikipedia')>0 AND -id NOT IN ( SELECT osm_id FROM wiwosm WHERE osm_id<0 )";
-		$result = pg_query($this->conn,$query);
+		$result = pg_query($this->pgconn,$query);
 		while ($row = pg_fetch_assoc($result)) {
 			// if the relation has no members ignore it and try the next one
 			if (!$row['members']) continue;
@@ -462,10 +472,10 @@ EOQ;
 						$hasNodes = (count($nodelist)>0);
 						$hasWays = (count($waylist)>0);
 						if ($hasWays) {
-							pg_execute($this->conn,'insert_relways_wiwosm',array('-'.$row['id'],$lang,$article,$anchor,'{'.$wayscsv.'}'));
+							pg_execute($this->pgconn,'insert_relways_wiwosm',array('-'.$row['id'],$lang,$article,$anchor,'{'.$wayscsv.'}'));
 						}
 						if ($hasNodes) {
-							pg_execute($this->conn,'insert_relnodes_wiwosm',array('-'.$row['id'],$lang,$article,$anchor,'{'.$nodescsv.'}'));
+							pg_execute($this->pgconn,'insert_relnodes_wiwosm',array('-'.$row['id'],$lang,$article,$anchor,'{'.$nodescsv.'}'));
 						}
 
 						// found a wikipedia tag so stop looping the tags
@@ -588,7 +598,17 @@ EOQ;
 			return false;
 		}
 
-		if (!$this->prep_mysql->bind_result($wd_id, $ll_lang,$ll_title)) {
+		if (!$this->prep_mysql->execute()) {
+			echo 'wikidata query failed with lang="'.$lang.'" and article="'.$article.'": '.$this->prep_mysql->error."\n";
+			return false;
+		}
+
+		if (!$this->prep_mysql->store_result() || $this->prep_mysql->num_rows == 0) {
+			echo 'wikidata query returned no result with lang="'.$lang.'" and article="'.$article."\"\n";
+			return false;
+		}
+
+		if (!$this->prep_mysql->bind_result($wd_id, $ll_lang, $ll_title)) {
 			echo 'bind_result failed with lastarticle='.$this->lastarticle.': '.$this->prep_mysql->error."\n";
 			return false;
 		}
@@ -607,16 +627,16 @@ EOQ;
 	function linkarticlelanguages() {
 		// try to fastconnect the obvious rows
 		$query = "UPDATE wiwosm SET lang_ref=lang_id FROM wiwosm_wiki_ll WHERE lang=lang_origin AND article=article_origin";
-		$result = pg_query($this->conn,$query);
+		$result = pg_query($this->pgconn,$query);
 
 		echo 'Could fastlink '.pg_affected_rows($result).' rows '.((microtime(true)-$this->start)/60)." min\n";
 
 		$query = "SELECT lang,article FROM wiwosm WHERE lang_ref=0 ORDER BY lang,article";
 
 		// lets update every row and use a cursor for that
-		if (!pg_query($this->conn,'BEGIN WORK') || !pg_query($this->conn,'DECLARE updatelangcur NO SCROLL CURSOR FOR '.$query.' FOR UPDATE OF wiwosm')) {
+		if (!pg_query($this->pgconn,'BEGIN WORK') || !pg_query($this->pgconn,'DECLARE updatelangcur NO SCROLL CURSOR FOR '.$query.' FOR UPDATE OF wiwosm')) {
 			echo 'Could not declare cursor for updating language refs'. "\n" . pg_last_error() . "\n";
-			$this->exithandler();
+			exit();
 		}
 
 		$langbefore = '';
@@ -627,20 +647,20 @@ EOQ;
 		// prepare some sql queries that are used very often:
 
 		// this is to search for an entry in wiwosm_wiki_ll table by given article and language
-		$result = pg_prepare($this->conn,'get_lang_id','SELECT lang_id FROM wiwosm_wiki_ll WHERE languages @> $1::hstore');
-		if ($result === false) $this->exithandler();
+		$result = pg_prepare($this->pgconn,'get_lang_id','SELECT lang_id FROM wiwosm_wiki_ll WHERE languages @> $1::hstore');
+		if ($result === false) exit();
 
 		// insert a new line in wiwosm_wiki_ll. We have to give the datatype for the text[][] explicit here so we can't use pg_prepare
-		$result = pg_query($this->conn,'PREPARE insert_wiwosm_wiki_ll (text,text,text[][],int) AS INSERT INTO wiwosm_wiki_ll (lang_id,lang_origin,article_origin,languages,wikidata_id) VALUES (DEFAULT,$1,$2,hstore($3),$4) RETURNING lang_id');
-		if ($result === false) $this->exithandler();
+		$result = pg_query($this->pgconn,'PREPARE insert_wiwosm_wiki_ll (text,text,text[][],int) AS INSERT INTO wiwosm_wiki_ll (lang_id,lang_origin,article_origin,languages,wikidata_id) VALUES (DEFAULT,$1,$2,hstore($3),$4) RETURNING lang_id');
+		if ($result === false) exit();
 
 		// update the lang_ref column in wiwosm table by using the current row from updatelangcur cursor
-		$result = pg_prepare($this->conn,'update_wiwosm_lang_ref','UPDATE wiwosm SET lang_ref=$1 WHERE CURRENT OF updatelangcur');
-		if ($result === false) $this->exithandler();
+		$result = pg_prepare($this->pgconn,'update_wiwosm_lang_ref','UPDATE wiwosm SET lang_ref=$1 WHERE CURRENT OF updatelangcur');
+		if ($result === false) exit();
 
-		$result = pg_prepare($this->conn,'fetch_next_updatelangcur','FETCH NEXT FROM updatelangcur');
-		if ($result === false) $this->exithandler();
-		$result = pg_execute($this->conn,'fetch_next_updatelangcur',array());
+		$result = pg_prepare($this->pgconn,'fetch_next_updatelangcur','FETCH NEXT FROM updatelangcur');
+		if ($result === false) exit();
+		$result = pg_execute($this->pgconn,'fetch_next_updatelangcur',array());
 		$fetchcount = pg_num_rows($result);
 
 		while ($fetchcount == 1) {
@@ -655,7 +675,7 @@ EOQ;
 				$articlebefore = $article;
 				$lang_id = '-1';
 				$params = array('"'.$this->escape($lang).'"=>"'.$this->escape($article).'"');
-				$result = pg_execute($this->conn,'get_lang_id',$params);
+				$result = pg_execute($this->pgconn,'get_lang_id',$params);
 				if ($result && pg_num_rows($result) == 1) {
 					// if we found an entry in our wiwosm_wiki_ll table we use that id to link
 					$lang_id = pg_fetch_result($result,0,0);
@@ -667,22 +687,22 @@ EOQ;
 						foreach ($langarray[1] as $l => $a) {
 							$hstorestring .= '{"'.$this->escape($l).'","'.$this->escape($a).'"},';
 						}
-						$hstorestring .= '{"wikidata","Q'.$langarray[0].'"}'.'}';
-						$idres = pg_execute($this->conn,'insert_wiwosm_wiki_ll',array($lang,$article,$hstorestring,$langarray[0]));
+						$hstorestring .= '{"wikidata","Q'.$langarray[0].'"}}';
+						$idres = pg_execute($this->pgconn,'insert_wiwosm_wiki_ll',array($lang,$article,$hstorestring,$langarray[0]));
 						if ($idres && pg_num_rows($idres) == 1 ) {
 							$lang_id = pg_fetch_result($idres,0,0);
 						}
 					}
 				}
 			}
-			pg_execute($this->conn,'update_wiwosm_lang_ref',array($lang_id));
-			if ($result === false) $this->exithandler();
+			pg_execute($this->pgconn,'update_wiwosm_lang_ref',array($lang_id));
+			if ($result === false) exit();
 			$count += $fetchcount;
-			$result = pg_execute($this->conn,'fetch_next_updatelangcur',array());
+			$result = pg_execute($this->pgconn,'fetch_next_updatelangcur',array());
 			$fetchcount = pg_num_rows($result);
 		}
-		pg_query($this->conn,'CLOSE updatelangcur');
-		pg_query($this->conn,'COMMIT WORK');
+		pg_query($this->pgconn,'CLOSE updatelangcur');
+		pg_query($this->pgconn,'COMMIT WORK');
 	}
 
 	function createLangTable() {
@@ -695,15 +715,14 @@ CREATE TABLE wiwosm_wiki_ll (
 	article_origin text,
 	languages hstore,
 	wikidata_id int
-)
-;
+);
 ALTER TABLE wiwosm_wiki_ll OWNER TO master;
 GRANT ALL ON TABLE wiwosm_wiki_ll TO master;
 GRANT SELECT ON TABLE wiwosm_wiki_ll TO public;
 CREATE INDEX languages_idx ON wiwosm_wiki_ll USING GIST (languages);
 COMMIT;
 EOQ;
-		pg_query($this->conn,$query);
+		pg_query($this->pgconn,$query);
 	}
 
 
@@ -751,7 +770,7 @@ EOQ;
 			UNION ( SELECT way FROM planet_point WHERE '.$articlefilter.' )
 			) AS wikistaff
 			';
-		pg_prepare($this->conn,'select_wikipedia_object',$sql);
+		pg_prepare($this->pgconn,'select_wikipedia_object',$sql);
 
 		$a = $this->escape($article);
 		$aurl = urlencode(str_replace(' ','_',$a));
@@ -763,7 +782,7 @@ EOQ;
 				'"wikipedia:'.$l.'"=>"http://'.$l.'.wikipedia.org/wiki/'.$aurl.'"',
 				'"wikipedia:'.$l.'"=>"https://'.$l.'.wikipedia.org/wiki/'.$aurl.'"');
 
-		$result = pg_execute($this->conn,'select_wikipedia_object',$params);
+		$result = pg_execute($this->pgconn,'select_wikipedia_object',$params);
 		if($e = pg_last_error()) trigger_error($e, E_USER_ERROR);
 
 		if ($result && pg_num_rows($result) == 1 ) {
@@ -786,19 +805,19 @@ EOQ;
 		*/
 
 		// so we have to use a cursor because its too much data:
-		if (!pg_query($this->conn,'BEGIN WORK') || !pg_query($this->conn,'DECLARE osmcur NO SCROLL CURSOR FOR '.$sql)) {
+		if (!pg_query($this->pgconn,'BEGIN WORK') || !pg_query($this->pgconn,'DECLARE osmcur NO SCROLL CURSOR FOR '.$sql)) {
 			echo 'Could not declare cursor'. "\n" . pg_last_error() . "\n";
-			$this->exithandler();
+			exit();
 		}
 
 
 		$count = 0;
 
 		// fetch from osmcur in steps of 1000 elements
-		$result = pg_prepare($this->conn,'fetch_osmcur','FETCH 1000 FROM osmcur');
-		if ($result === false) $this->exithandler();
+		$result = pg_prepare($this->pgconn,'fetch_osmcur','FETCH 1000 FROM osmcur');
+		if ($result === false) exit();
 
-		$result = pg_execute($this->conn,'fetch_osmcur',array());
+		$result = pg_execute($this->pgconn,'fetch_osmcur',array());
 
 		$fetchcount = pg_num_rows($result);
 
@@ -814,12 +833,12 @@ EOQ;
 			}
 			$count += $fetchcount;
 			echo $count.' results processed:'.((microtime(true)-$this->start)/60)." min\n";
-			$result = pg_execute($this->conn,'fetch_osmcur',array());
+			$result = pg_execute($this->pgconn,'fetch_osmcur',array());
 			$fetchcount = pg_num_rows($result);
 		}
 
-		pg_query($this->conn,'CLOSE osmcur');
-		pg_query($this->conn,'COMMIT WORK');
+		pg_query($this->pgconn,'CLOSE osmcur');
+		pg_query($this->pgconn,'COMMIT WORK');
 	}
 
 }
