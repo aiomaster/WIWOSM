@@ -43,9 +43,9 @@ class Wiwosm {
 		$this->pgconn = false;
 		$this->mysqliconn = false;
 		if ($dbconn) {
-			$this->toolserver_mycnf = parse_ini_file("/home/".get_current_user()."/.my.cnf");
 			$this->openPgConnection();
 			if ($mysqlconn) {
+				$this->toolserver_mycnf = parse_ini_file("/home/".get_current_user()."/.my.cnf");
 				$this->openMysqlConnection();
 			}
 		}
@@ -83,7 +83,7 @@ class Wiwosm {
 	 * Open a mysql db connection to wikidata
 	 **/
 	function openMysqlConnection() {
-		$this->mysqliconn = new mysqli('wikidatawiki-p.db.toolserver.org', $this->toolserver_mycnf['user'], $this->toolserver_mycnf['password'], 'wikidatawiki_p');
+		$this->mysqliconn = new mysqli('sql-s5', $this->toolserver_mycnf['user'], $this->toolserver_mycnf['password'], 'wikidatawiki_p');
 		if (mysqli_connect_errno()) {
 			echo 'Mysql connection failed: '.mysqli_connect_error()."\n";
 			exit();
@@ -144,7 +144,7 @@ class Wiwosm {
 	function logUnknown() {
 		$htmlrows = '';
 		// get all broken languages
-		$query = 'SELECT osm_id,lang,article,array_agg(ST_GeometryType(way)) AS geomtype FROM wiwosm WHERE lang_ref = -1 GROUP BY osm_id,lang,article';
+		$query = 'SELECT osm_id,lang,article,array_agg(ST_GeometryType(way)) AS geomtype FROM wiwosm WHERE wikidata_ref = -1 GROUP BY osm_id,lang,article';
 		$result = pg_query($this->pgconn,$query);
 		$count = pg_num_rows($result);
 		while ($row = pg_fetch_assoc($result)) {
@@ -211,7 +211,7 @@ EOT;
 	 **/
 	function logUnknownJSON() {
 		// get all broken languages
-		$query = 'SELECT DISTINCT ON (osm_id) osm_id,lang,article,geomtype,iso2,name FROM ( SELECT osm_id,lang,article,array_agg(ST_GeometryType(way)) AS geomtype, ST_Transform(ST_SetSRID(ST_Extent(way),900913),4326) AS extent FROM wiwosm WHERE lang_ref = -1 GROUP BY osm_id,lang,article ) AS w LEFT JOIN wiwosm_tm_world_borders_simple ON ST_Intersects(extent, ST_SetSRID(geom,4326))';
+		$query = 'SELECT DISTINCT ON (osm_id) osm_id,lang,article,geomtype,iso2,name FROM ( SELECT osm_id,lang,article,array_agg(ST_GeometryType(way)) AS geomtype, ST_Transform(ST_SetSRID(ST_Extent(way),900913),4326) AS extent FROM wiwosm WHERE wikidata_ref = -1 GROUP BY osm_id,lang,article ) AS w LEFT JOIN wiwosm_tm_world_borders_simple ON ST_Intersects(extent, ST_SetSRID(geom,4326))';
 		$result = pg_query($this->pgconn,$query);
 		$count = pg_num_rows($result);
 		$json = '{"created":"'.date(DATE_RFC822).'","count":"'.$count.'","items":[';
@@ -313,11 +313,11 @@ UNION ( SELECT osm_id, tags, way FROM planet_polygon WHERE strpos(concat(',',arr
 ORDER BY article,lang ASC
 )
 ;
-ALTER TABLE wiwosm ADD COLUMN lang_ref integer DEFAULT 0;
+ALTER TABLE wiwosm ADD COLUMN wikidata_ref integer DEFAULT 0;
 ALTER TABLE wiwosm OWNER TO master;
 GRANT ALL ON TABLE wiwosm TO master;
 GRANT SELECT ON TABLE wiwosm TO public;
-UPDATE wiwosm SET lang_ref=-1 WHERE lang = ANY (ARRAY['','http','subject','name','operator','related','sculptor','architect','maker']); -- we know that there could not be a language reference in Wikipedia for some lang values.
+UPDATE wiwosm SET wikidata_ref=-1 WHERE lang = ANY (ARRAY['','http','subject','name','operator','related','sculptor','architect','maker']); -- we know that there could not be a language reference in Wikipedia for some lang values.
 COMMIT;
 EOQ;
 
@@ -603,10 +603,12 @@ EOQ;
 			return false;
 		}
 
-		if (!$this->prep_mysql->store_result() || $this->prep_mysql->num_rows == 0) {
-			echo 'wikidata query returned no result with lang="'.$lang.'" and article="'.$article."\"\n";
+		if (!$this->prep_mysql->store_result()) {
+			echo 'wikidata query store result failed with lang="'.$lang.'" and article="'.$article."\"\n";
 			return false;
 		}
+
+		if ($this->prep_mysql->num_rows == 0) return false;
 
 		if (!$this->prep_mysql->bind_result($wd_id, $ll_lang, $ll_title)) {
 			echo 'bind_result failed with lastarticle='.$this->lastarticle.': '.$this->prep_mysql->error."\n";
@@ -626,12 +628,12 @@ EOQ;
 
 	function linkarticlelanguages() {
 		// try to fastconnect the obvious rows
-		$query = "UPDATE wiwosm SET lang_ref=lang_id FROM wiwosm_wiki_ll WHERE lang=lang_origin AND article=article_origin";
+		$query = "UPDATE wiwosm SET wikidata_ref=wikidata_id FROM wiwosm_wikidata WHERE (lang=lang_origin AND article=article_origin) OR (languages @> hstore(lang,article))";
 		$result = pg_query($this->pgconn,$query);
 
 		echo 'Could fastlink '.pg_affected_rows($result).' rows '.((microtime(true)-$this->start)/60)." min\n";
 
-		$query = "SELECT lang,article FROM wiwosm WHERE lang_ref=0 ORDER BY lang,article";
+		$query = "SELECT lang,article FROM wiwosm WHERE wikidata_ref=0 ORDER BY lang,article";
 
 		// lets update every row and use a cursor for that
 		if (!pg_query($this->pgconn,'BEGIN WORK') || !pg_query($this->pgconn,'DECLARE updatelangcur NO SCROLL CURSOR FOR '.$query.' FOR UPDATE OF wiwosm')) {
@@ -646,16 +648,12 @@ EOQ;
 
 		// prepare some sql queries that are used very often:
 
-		// this is to search for an entry in wiwosm_wiki_ll table by given article and language
-		$result = pg_prepare($this->pgconn,'get_lang_id','SELECT lang_id FROM wiwosm_wiki_ll WHERE languages @> $1::hstore');
+		// insert a new line in wiwosm_wikidata. We have to give the datatype for the text[][] explicit here so we can't use pg_prepare
+		$result = pg_query($this->pgconn,'PREPARE insert_wiwosm_wikidata (text,text,text[][],int) AS INSERT INTO wiwosm_wikidata (wikidata_id,lang_origin,article_origin,languages,wikidata_id) VALUES (DEFAULT,$1,$2,hstore($3),$4) RETURNING wikidata_id');
 		if ($result === false) exit();
 
-		// insert a new line in wiwosm_wiki_ll. We have to give the datatype for the text[][] explicit here so we can't use pg_prepare
-		$result = pg_query($this->pgconn,'PREPARE insert_wiwosm_wiki_ll (text,text,text[][],int) AS INSERT INTO wiwosm_wiki_ll (lang_id,lang_origin,article_origin,languages,wikidata_id) VALUES (DEFAULT,$1,$2,hstore($3),$4) RETURNING lang_id');
-		if ($result === false) exit();
-
-		// update the lang_ref column in wiwosm table by using the current row from updatelangcur cursor
-		$result = pg_prepare($this->pgconn,'update_wiwosm_lang_ref','UPDATE wiwosm SET lang_ref=$1 WHERE CURRENT OF updatelangcur');
+		// update the wikidata_ref column in wiwosm table by using the current row from updatelangcur cursor
+		$result = pg_prepare($this->pgconn,'update_wiwosm_wikidata_ref','UPDATE wiwosm SET wikidata_ref=$1 WHERE CURRENT OF updatelangcur');
 		if ($result === false) exit();
 
 		$result = pg_prepare($this->pgconn,'fetch_next_updatelangcur','FETCH NEXT FROM updatelangcur');
@@ -673,29 +671,23 @@ EOQ;
 				}
 				$langbefore = $lang;
 				$articlebefore = $article;
-				$lang_id = '-1';
-				$params = array('"'.$this->escape($lang).'"=>"'.$this->escape($article).'"');
-				$result = pg_execute($this->pgconn,'get_lang_id',$params);
-				if ($result && pg_num_rows($result) == 1) {
-					// if we found an entry in our wiwosm_wiki_ll table we use that id to link
-					$lang_id = pg_fetch_result($result,0,0);
-				} else {
-					// if there was no such entry we have to query the interwikilinks mysql db
-					$langarray = $this->queryWikidataLanguages($lang,$article);
-					if ($langarray !== false) {
-						$hstorestring = '{';
-						foreach ($langarray[1] as $l => $a) {
-							$hstorestring .= '{"'.$this->escape($l).'","'.$this->escape($a).'"},';
-						}
-						$hstorestring .= '{"wikidata","Q'.$langarray[0].'"}}';
-						$idres = pg_execute($this->pgconn,'insert_wiwosm_wiki_ll',array($lang,$article,$hstorestring,$langarray[0]));
-						if ($idres && pg_num_rows($idres) == 1 ) {
-							$lang_id = pg_fetch_result($idres,0,0);
-						}
+				$wikidata_id = '-1';
+
+				// lets have a look in wikidata if we could find the missing article
+				$langarray = $this->queryWikidataLanguages($lang,$article);
+				if ($langarray !== false) {
+					$hstorestring = '{';
+					foreach ($langarray[1] as $l => $a) {
+						$hstorestring .= '{"'.$this->escape(str_replace('_','-',$l)).'","'.$this->escape($a).'"},';
+					}
+					$hstorestring .= '{"wikidata","Q'.$langarray[0].'"}}';
+					$idres = pg_execute($this->pgconn,'insert_wiwosm_wikidata',array($lang,$article,$hstorestring,$langarray[0]));
+					if ($idres && pg_num_rows($idres) == 1 ) {
+						$wikidata_id = pg_fetch_result($idres,0,0);
 					}
 				}
 			}
-			pg_execute($this->pgconn,'update_wiwosm_lang_ref',array($lang_id));
+			pg_execute($this->pgconn,'update_wiwosm_wikidata_ref',array($wikidata_id));
 			if ($result === false) exit();
 			$count += $fetchcount;
 			$result = pg_execute($this->pgconn,'fetch_next_updatelangcur',array());
@@ -708,18 +700,17 @@ EOQ;
 	function createLangTable() {
 		$query = <<<EOQ
 BEGIN;
-DROP TABLE IF EXISTS wiwosm_wiki_ll;
-CREATE TABLE wiwosm_wiki_ll (
-	lang_id serial PRIMARY KEY,
+DROP TABLE IF EXISTS wiwosm_wikidata;
+CREATE TABLE wiwosm_wikidata (
+	wikidata_id int PRIMARY KEY,
 	lang_origin text,
 	article_origin text,
-	languages hstore,
-	wikidata_id int
+	languages hstore
 );
-ALTER TABLE wiwosm_wiki_ll OWNER TO master;
-GRANT ALL ON TABLE wiwosm_wiki_ll TO master;
-GRANT SELECT ON TABLE wiwosm_wiki_ll TO public;
-CREATE INDEX languages_idx ON wiwosm_wiki_ll USING GIST (languages);
+ALTER TABLE wiwosm_wikidata OWNER TO master;
+GRANT ALL ON TABLE wiwosm_wikidata TO master;
+GRANT SELECT ON TABLE wiwosm_wikidata TO public;
+CREATE INDEX languages_idx ON wiwosm_wikidata USING GIST (languages);
 COMMIT;
 EOQ;
 		pg_query($this->pgconn,$query);
@@ -793,7 +784,7 @@ EOQ;
 
 	function processOsmItems() {
 		// to avoid problems with geometrycollections first dump all geometries and collect them again
-		$sql = 'SELECT lang_origin, article_origin, languages, geojson FROM ( SELECT lang_ref,'.self::simplifyGeoJSON.' FROM  (SELECT lang_ref,(ST_Dump(way)).geom AS way FROM wiwosm WHERE lang_ref != -1 ) AS geomdump GROUP BY lang_ref ) AS wiwosm_refs, wiwosm_wiki_ll WHERE wiwosm_refs.lang_ref = wiwosm_wiki_ll.lang_id';
+		$sql = 'SELECT lang_origin, article_origin, languages, geojson FROM ( SELECT wikidata_ref,'.self::simplifyGeoJSON.' FROM  (SELECT wikidata_ref,(ST_Dump(way)).geom AS way FROM wiwosm WHERE wikidata_ref != -1 ) AS geomdump GROUP BY wikidata_ref ) AS wiwosm_refs, wiwosm_wikidata WHERE wiwosm_refs.wikidata_ref = wiwosm_wikidata.wikidata_id';
 
 		// this consumes just too mutch memory:
 		/*
