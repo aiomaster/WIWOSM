@@ -527,7 +527,7 @@ EOQ;
 		}
 		// if it is already clean UTF-8 there should be no problems
 		return $str;
-  }
+	}
 
 
 	function queryInterWikiLanguages($lang, $article) {
@@ -648,8 +648,12 @@ EOQ;
 
 		// prepare some sql queries that are used very often:
 
+		// this is to search for an entry in wiwosm_wiki_ll table by given article and language
+		$result = pg_prepare($this->pgconn,'get_wikidata_id','SELECT wikidata_id FROM wiwosm_wikidata WHERE languages @> $1::hstore');
+		if ($result === false) exit();
+
 		// insert a new line in wiwosm_wikidata. We have to give the datatype for the text[][] explicit here so we can't use pg_prepare
-		$result = pg_query($this->pgconn,'PREPARE insert_wiwosm_wikidata (text,text,text[][],int) AS INSERT INTO wiwosm_wikidata (wikidata_id,lang_origin,article_origin,languages,wikidata_id) VALUES (DEFAULT,$1,$2,hstore($3),$4) RETURNING wikidata_id');
+		$result = pg_query($this->pgconn,'PREPARE insert_wiwosm_wikidata (int,text,text,text[][]) AS INSERT INTO wiwosm_wikidata (wikidata_id,lang_origin,article_origin,languages) VALUES ($1,$2,$3,hstore($4))');
 		if ($result === false) exit();
 
 		// update the wikidata_ref column in wiwosm table by using the current row from updatelangcur cursor
@@ -672,18 +676,22 @@ EOQ;
 				$langbefore = $lang;
 				$articlebefore = $article;
 				$wikidata_id = '-1';
-
-				// lets have a look in wikidata if we could find the missing article
-				$langarray = $this->queryWikidataLanguages($lang,$article);
-				if ($langarray !== false) {
-					$hstorestring = '{';
-					foreach ($langarray[1] as $l => $a) {
-						$hstorestring .= '{"'.$this->escape(str_replace('_','-',$l)).'","'.$this->escape($a).'"},';
-					}
-					$hstorestring .= '{"wikidata","Q'.$langarray[0].'"}}';
-					$idres = pg_execute($this->pgconn,'insert_wiwosm_wikidata',array($lang,$article,$hstorestring,$langarray[0]));
-					if ($idres && pg_num_rows($idres) == 1 ) {
-						$wikidata_id = pg_fetch_result($idres,0,0);
+				$params = array('"'.$this->escape($lang).'"=>"'.$this->escape($article).'"');
+				$result = pg_execute($this->pgconn,'get_wikidata_id',$params);
+				if ($result && pg_num_rows($result) == 1) {
+					// if we found an entry in our wiwosm_wikidata table we use that id to link
+					$wikidata_id = pg_fetch_result($result,0,0);
+				} else {
+					// if there was no such entry we have to query the wikidata mysql db
+					$langarray = $this->queryWikidataLanguages($lang,$article);
+					if ($langarray !== false) {
+						$wikidata_id = $langarray[0];
+						$hstorestring = '{';
+						foreach ($langarray[1] as $l => $a) {
+							$hstorestring .= '{"'.$this->escape(str_replace('_','-',$l)).'","'.$this->escape($a).'"},';
+						}
+						$hstorestring .= '{"wikidata","Q'.$wikidata_id.'"}}';
+						pg_execute($this->pgconn,'insert_wiwosm_wikidata',array($wikidata_id,$lang,$article,$hstorestring));
 					}
 				}
 			}
