@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="SlickGrid/css/smoothness/jquery-ui-1.8.16.custom.css" type="text/css"/>
 
     <script src="//ajax.googleapis.com/ajax/libs/jquery/1.8/jquery.min.js"></script>
-    <script src="SlickGrid/lib/jquery.event.drag-2.0.min.js"></script>
+    <script src="SlickGrid/lib/jquery.event.drag-2.2.js"></script>
 
     <script src="SlickGrid/slick.core.js"></script>
     <script src="SlickGrid/slick.grid.js"></script>
@@ -20,12 +20,13 @@
     <p>Note: You can get the raw data as <a href="broken.php">JSON</a>, too!</p>
     <ul>
       <li>12.01.2013: Now all wikipedia tags with undefined language like wikipedia=article are shown, too!</li>
-      <li>14.01.2013: Edit links are now available for potlatch2 and JOSM or Merkaator with Remotecontrol plugin.</li>
+      <li>14.01.2013: Edit links are now available for potlatch2 and JOSM or Merkaartor with Remotecontrol plugin.</li>
       <li>15.01.2013: Handled the big load with <a href="https://github.com/mleibman/SlickGrid">SlickGrid</a>.</li>
       <li>16.01.2013: Columns are sortable again.</li>
       <li>18.01.2013: Now I try to <b>guess</b> the country with <a href="http://en.wikipedia.org/wiki/ISO_3166-1_alpha-2">iso2 country code</a> by geographic match with <a href="http://thematicmapping.org/downloads/world_borders.php">World Borders Dataset</a>.For Performance reasons I use the simple boundaries, so there could be some mistakes near borders! This matching is just a hint. You should check that manually in every case!</li>
       <li>23.01.2013: You can use Quickfilters now, yeah!</li>
       <li>29.01.2013: Quickfilters are case insensitive now.</li>
+      <li>03.03.2014: Now we use wikidata to get all associated languages! You see all articles here that were not found in wikidata.</li>
     </ul>
     <p style="color: red;">Important: Most of the wikipedia=article tags point to the english wikipedia.<br>Please check it first to be sure to link to the correct article. It is not enough to add just a guessed language!<br>Please verify that this article is really present in the specified wikipedia!</p>
     <div id="grid" style="width:1600px;height:800px;"></div>
@@ -64,7 +65,7 @@ $.getJSON('broken.php', function(json) {
     {id: "id", name:"Row", field: "id", formatter: RowNumberFormatter, width:80, resizable:false, unselectable:true, sortable:false},
     {id: "oid", name: "OSM-Object", field: "oid", width: 200, formatter: formatter, sortable: true},
     {id: "editpotlatch", name: "Edit Potlatch2", field: "editpotlatch",width: 130, formatter: formatter},
-    {id: "editjosm", name: "Edit JOSM/Merkaator", field: "editjosm", width: 190, formatter: formatter},
+    {id: "editjosm", name: "Edit JOSM/Merkaartor", field: "editjosm", width: 190, formatter: formatter},
     {id: "language", name: "language", field: "language", width: 100, sortable: true},
     {id: "article", name: "article", field: "article", width: 400, sortable: true},
     {id: "guessedcountry", name: "Guessed country", field: "guessedcountry", width: 250, sortable: true},
@@ -78,7 +79,8 @@ $.getJSON('broken.php', function(json) {
     forceFitColumns: true,
     showHeaderRow: true,
     headerRowHeight: 30,
-    explicitInitialization: true
+    explicitInitialization: true,
+    enableTextSelectionOnCells: true
   };
 
   function getType(t) {
@@ -98,7 +100,7 @@ $.getJSON('broken.php', function(json) {
         id: i,
         oid: '<a href="http://www.openstreetmap.org/browse/'+type+'/'+item["i"]+'">'+item["i"]+' ('+type+')</a>',
         editpotlatch: '<a href="http://www.openstreetmap.org/edit?editor=potlatch2&'+type+'='+item["i"]+'">Potlatch2</a>',
-        editjosm: '<a href="http://127.0.0.1:8111/load_object?objects='+item["t"]+item["i"]+'">JOSM/Merkaator</a>',
+        editjosm: '<a href="http://127.0.0.1:8111/load_object?objects='+item["t"]+item["i"]+'">JOSM/Merkaartor</a>',
         language: item["l"],
         article: item["a"],
         guessedcountry: item["c"],
