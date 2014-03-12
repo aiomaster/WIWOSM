@@ -273,7 +273,7 @@ EOT;
 	function createIndices() {
 $query = <<<EOQ
 CREATE INDEX geom_index ON wiwosm USING GIST ( way ); -- geometry index
-CREATE INDEX article_lang_index ON wiwosm (article, lang ASC); -- index on articles and languages
+CREATE INDEX article_lang_index ON wiwosm USING btree (article, lang ASC); -- index on articles and languages
 EOQ;
 		pg_query($this->pgconn,$query);
 	}
@@ -628,10 +628,15 @@ EOQ;
 
 	function linkarticlelanguages() {
 		// try to fastconnect the obvious rows
-		$query = "UPDATE wiwosm SET wikidata_ref=wikidata_id FROM wiwosm_wikidata WHERE (lang=lang_origin AND article=article_origin) OR (languages @> hstore(lang,article))";
+		$query = "UPDATE wiwosm SET wikidata_ref=wikidata_id FROM wiwosm_wikidata WHERE wikidata_ref = 0 AND lang=lang_origin AND article=article_origin";
 		$result = pg_query($this->pgconn,$query);
 
 		echo 'Could fastlink '.pg_affected_rows($result).' rows '.((microtime(true)-$this->start)/60)." min\n";
+
+		$query = "UPDATE wiwosm SET wikidata_ref=wikidata_id FROM wiwosm_wikidata WHERE wikidata_ref=0 AND (languages @> hstore(lang,article))";
+		$result = pg_query($this->pgconn,$query);
+
+		echo 'Could crosslink '.pg_affected_rows($result).' rows '.((microtime(true)-$this->start)/60)." min\n";
 
 		$query = "SELECT lang,article FROM wiwosm WHERE wikidata_ref=0 ORDER BY lang,article";
 
@@ -653,7 +658,8 @@ EOQ;
 		if ($result === false) exit();
 
 		// insert a new line in wiwosm_wikidata. We have to give the datatype for the text[][] explicit here so we can't use pg_prepare
-		$result = pg_query($this->pgconn,'PREPARE insert_wiwosm_wikidata (int,text,text,text[][]) AS INSERT INTO wiwosm_wikidata (wikidata_id,lang_origin,article_origin,languages) VALUES ($1,$2,$3,hstore($4))');
+		//$result = pg_query($this->pgconn,'PREPARE insert_wiwosm_wikidata (int,text,text,text[][]) AS INSERT INTO wiwosm_wikidata (wikidata_id,lang_origin,article_origin,languages) VALUES ($1,$2,$3,hstore($4))');
+		$result = pg_query($this->pgconn,'PREPARE insert_wiwosm_wikidata (int,text,text,text[][]) AS WITH widaval (wikidata_id,lang_origin,article_origin,languages) AS (VALUES ($1,$2,$3,hstore($4))), upsert AS (UPDATE wiwosm_wikidata wiwida SET lang_origin=widaval.lang_origin, article_origin=widaval.article_origin, languages=widaval.languages FROM widaval WHERE wiwida.wikidata_id=widaval.wikidata_id RETURNING wiwida.* ) INSERT INTO wiwosm_wikidata (wikidata_id,lang_origin,article_origin,languages) SELECT wikidata_id,lang_origin,article_origin,languages FROM widaval WHERE NOT EXISTS (SELECT 1 FROM upsert up WHERE up.wikidata_id = widaval.wikidata_id)');
 		if ($result === false) exit();
 
 		// update the wikidata_ref column in wiwosm table by using the current row from updatelangcur cursor
@@ -719,6 +725,7 @@ ALTER TABLE wiwosm_wikidata OWNER TO master;
 GRANT ALL ON TABLE wiwosm_wikidata TO master;
 GRANT SELECT ON TABLE wiwosm_wikidata TO public;
 CREATE INDEX languages_idx ON wiwosm_wikidata USING GIST (languages);
+CREATE INDEX origins_idx ON wiwosm_wikidata USING btree (lang_origin, article_origin);
 COMMIT;
 EOQ;
 		pg_query($this->pgconn,$query);
