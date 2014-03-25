@@ -1,4 +1,4 @@
- <?php
+<?php
 
 /**
  * Wiwosm main class
@@ -38,10 +38,11 @@ class Wiwosm {
 	 * This is what to do on creating a Wiwosm object
 	 * (start timer, parse ini file for db connection … )
 	 **/
-	function __construct($dbconn = true, $mysqlconn = false) {
+	function __construct($dbconn = true, $mysqlconn = false, $loglevel = 0) {
 		$this->start = microtime(true);
 		$this->pgconn = false;
 		$this->mysqliconn = false;
+		$this->loglevel = $loglevel;
 		if ($dbconn) {
 			$this->openPgConnection();
 			if ($mysqlconn) {
@@ -57,14 +58,23 @@ class Wiwosm {
 	 * (output time and memory consumption, close all db connections … )
 	 **/
 	function __destruct() {
-		echo 'Execution time: '.((microtime(true)-$this->start)/60)."min\n";
-		echo 'Peak memory usage: '.(memory_get_peak_usage(true)/1024/1024)."MB\n";
+		$this->logMessage('Execution time: '.((microtime(true)-$this->start)/60)."min\n", 2);
+		$this->logMessage('Peak memory usage: '.(memory_get_peak_usage(true)/1024/1024)."MB\n", 2);
 		if ($this->pgconn) {
 			pg_close($this->pgconn);
 		}
 		if ($this->mysqliconn) {
 			if ($this->prep_mysql) $this->prep_mysql->close();
 			$this->mysqliconn->close();
+		}
+	}
+
+	/**
+	 * Log a message at a specified loglevel
+	 **/
+	function logMessage($message, $level) {
+		if ($this->loglevel >= $level) {
+			echo $message;
 		}
 	}
 
@@ -85,7 +95,7 @@ class Wiwosm {
 	function openMysqlConnection() {
 		$this->mysqliconn = new mysqli('sql-s5', $this->toolserver_mycnf['user'], $this->toolserver_mycnf['password'], 'wikidatawiki_p');
 		if (mysqli_connect_errno()) {
-			echo 'Mysql connection failed: '.mysqli_connect_error()."\n";
+			$this->logMessage('Mysql connection failed: '.mysqli_connect_error()."\n", 1);
 			exit();
 		}
 		$this->prep_mysql = $this->mysqliconn->prepare('SELECT `ips_item_id`,`ips_site_id`,`ips_site_page`  FROM `wb_items_per_site` WHERE `ips_item_id` = (SELECT `ips_item_id` FROM `wb_items_per_site` WHERE `ips_site_id` = ? AND `ips_site_page` = ? LIMIT 1)');
@@ -115,7 +125,7 @@ class Wiwosm {
 	 * @param string $article the name of the article
 	 * @return string the absolute filepath for this lang and article
 	 **/
-	function getFilePath($lang, $article, $relativ = false) {
+	function getFilePath($lang, $article, $create_if_missing = true, $relativ = false) {
 		//$hash = md5($lang.str_replace('_',' ',$article));
 		// use fnvhash because its much faster than md5
 		$article = str_replace('_',' ',$article);
@@ -123,7 +133,7 @@ class Wiwosm {
 		$relpath = substr($hash,0,2).'/'.substr($hash,0,4);
 		$fullpath = $this->json_path.'/'.$relpath;
 		$path = ($relativ) ? $relpath : $fullpath;
-		if (!file_exists($fullpath)) @mkdir($fullpath, 0755, true);
+		if ($create_if_missing && !file_exists($fullpath)) @mkdir($fullpath, 0755, true);
 		$path .= '/'.$hash.'_'.substr(str_replace(array("\0",'/'),array('','-'),$lang.'_'.$article),0,230).'.geojson.gz';
 		unset($hash);
 		return $path;
@@ -236,7 +246,7 @@ EOT;
 		$json .= ']}';
 
 		//write that stuff to a gzipped json file
-		$handle = gzopen('/home/master/public_html/wiwosmlog/broken.json.gz','w');
+		$handle = gzopen('/home/master/public_html/wiwosmlog/broken.dev.json.gz','w');
 		gzwrite($handle,$json);
 		gzclose($handle);
 	}
@@ -247,8 +257,8 @@ EOT;
 	 **/
 	function testAndRename() {
 		//$countFiles = system('ls -RU1 --color=never '.$json_path.' | wc -l');
-		echo 'Execution time: '.((microtime(true)-$this->start)/60)."min\n";
-		echo 'Counting generated files …'."\n";
+		$this->logMessage('Execution time: '.((microtime(true)-$this->start)/60)."min\n", 2);
+		$this->logMessage('Counting generated files …'."\n", 2);
 		$countFiles = system('find '.$this->json_path.' -type f | wc -l');
 		// if there are more than 100000
 		if ( $countFiles > 100000 ) {
@@ -326,12 +336,12 @@ EOQ;
 			trigger_error($e, E_USER_ERROR);
 			exit();
 		} else {
-			echo 'wiwosm DB basic table build in '.((microtime(true)-$this->start)/60)." min\nStarting additional relation adding …\n";
+			$this->logMessage('wiwosm DB basic table build in '.((microtime(true)-$this->start)/60)." min\nStarting additional relation adding …\n", 2);
 			$this->addMissingRelationObjects();
-			echo 'Missing Relations added '.((microtime(true)-$this->start)/60)." min\nCreate Indices and link articleslanguages …\n";
+			$this->logMessage('Missing Relations added '.((microtime(true)-$this->start)/60)." min\nCreate Indices and link articleslanguages …\n", 2);
 			$this->createIndices();
 			$this->linkarticlelanguages();
-			echo 'wiwosm DB upgraded in '.((microtime(true)-$this->start)/60)." min\n";
+			$this->logMessage('wiwosm DB upgraded in '.((microtime(true)-$this->start)/60)." min\n", 2);
 		}
 	}
 
@@ -537,7 +547,7 @@ EOQ;
 		$this->lastarticle = str_replace(' ','_',$article);
 		// just do a new connection if we get another lang than in loop before
 		if ($this->lastlang!=$lang) {
-			echo 'Try new lang:'.$lang."\n";
+			$this->logMessage('Try new lang:'.$lang."\n", 2);
 			$this->lastlang=$lang;
 			if ($this->mysqliconn) {
 				if ($this->prep_mysql) $this->prep_mysql->close();
@@ -560,7 +570,7 @@ EOQ;
 				// if we could not prepare the select statement we should skip this lang
 				if (!$this->prep_mysql) return false;
 				if (!$this->prep_mysql->bind_param('s', $this->lastarticle)) {
-					echo 'bind_param failed with lastarticle='.$this->lastarticle.': '.$this->prep_mysql->error."\n";
+					$this->logMessage('bind_param failed with lastarticle='.$this->lastarticle.': '.$this->prep_mysql->error."\n", 1);
 					return false;
 				}
 			}
@@ -569,15 +579,15 @@ EOQ;
 			if ($this->prep_mysql)
 			       	$this->prep_mysql->execute();
 			else {
-				echo 'article: '.$this->lastarticle."\n".'lang: '.$lang."\n--\n";
+				$this->logMessage('article: '.$this->lastarticle."\n".'lang: '.$lang."\n--\n", 2);
 				return false;
 			}
 			if (!$this->prep_mysql->bind_result($ll_lang,$ll_title)) {
-				echo 'bind_result failed with lastarticle='.$this->lastarticle.': '.$this->prep_mysql->error."\n";
+				$this->logMessage('bind_result failed with lastarticle='.$this->lastarticle.': '.$this->prep_mysql->error."\n", 1);
 				return false;
 			}
 		} catch (Exception $e) {
-			echo $e->getMessage()."\n".'article: '.$this->lastarticle."\n".'lang: '.$lang."\n--\n";
+			$this->logMessage($e->getMessage()."\n".'article: '.$this->lastarticle."\n".'lang: '.$lang."\n--\n", 1);
 		}
 		$langarray = array();
 		while ($this->prep_mysql->fetch()) {
@@ -594,24 +604,24 @@ EOQ;
 		$lang = str_replace('-','_',$lang).'wiki';
 
 		if (!$this->prep_mysql->bind_param('ss', $lang, $article)) {
-			echo 'bind_param failed with lang="'.$lang.'" and article="'.$article.'": '.$this->prep_mysql->error."\n";
+			$this->logMessage('bind_param failed with lang="'.$lang.'" and article="'.$article.'": '.$this->prep_mysql->error."\n", 1);
 			return false;
 		}
 
 		if (!$this->prep_mysql->execute()) {
-			echo 'wikidata query failed with lang="'.$lang.'" and article="'.$article.'": '.$this->prep_mysql->error."\n";
+			$this->logMessage('wikidata query failed with lang="'.$lang.'" and article="'.$article.'": '.$this->prep_mysql->error."\n", 1);
 			return false;
 		}
 
 		if (!$this->prep_mysql->store_result()) {
-			echo 'wikidata query store result failed with lang="'.$lang.'" and article="'.$article."\"\n";
+			$this->logMessage('wikidata query store result failed with lang="'.$lang.'" and article="'.$article."\"\n", 1);
 			return false;
 		}
 
 		if ($this->prep_mysql->num_rows == 0) return false;
 
 		if (!$this->prep_mysql->bind_result($wd_id, $ll_lang, $ll_title)) {
-			echo 'bind_result failed with lastarticle='.$this->lastarticle.': '.$this->prep_mysql->error."\n";
+			$this->logMessage('bind_result failed with lastarticle='.$this->lastarticle.': '.$this->prep_mysql->error."\n", 1);
 			return false;
 		}
 
@@ -631,18 +641,18 @@ EOQ;
 		$query = "UPDATE wiwosm SET wikidata_ref=wikidata_id FROM wiwosm_wikidata WHERE wikidata_ref = 0 AND lang=lang_origin AND article=article_origin";
 		$result = pg_query($this->pgconn,$query);
 
-		echo 'Could fastlink '.pg_affected_rows($result).' rows '.((microtime(true)-$this->start)/60)." min\n";
+		$this->logMessage('Could fastlink '.pg_affected_rows($result).' rows '.((microtime(true)-$this->start)/60)." min\n", 2);
 
 		$query = "UPDATE wiwosm SET wikidata_ref=wikidata_id FROM wiwosm_wikidata WHERE wikidata_ref=0 AND (languages @> hstore(lang,article))";
 		$result = pg_query($this->pgconn,$query);
 
-		echo 'Could crosslink '.pg_affected_rows($result).' rows '.((microtime(true)-$this->start)/60)." min\n";
+		$this->logMessage('Could crosslink '.pg_affected_rows($result).' rows '.((microtime(true)-$this->start)/60)." min\n", 2);
 
 		$query = "SELECT lang,article FROM wiwosm WHERE wikidata_ref=0 ORDER BY lang,article";
 
 		// lets update every row and use a cursor for that
 		if (!pg_query($this->pgconn,'BEGIN WORK') || !pg_query($this->pgconn,'DECLARE updatelangcur NO SCROLL CURSOR FOR '.$query.' FOR UPDATE OF wiwosm')) {
-			echo 'Could not declare cursor for updating language refs'. "\n" . pg_last_error() . "\n";
+			$this->logMessage('Could not declare cursor for updating language refs'. "\n" . pg_last_error() . "\n", 1);
 			exit();
 		}
 
@@ -677,7 +687,7 @@ EOQ;
 			$lang = $row['lang'];
 			if ($langbefore !== $lang || $articlebefore !== $article) {
 				if ($langbefore !== $lang) {
-					echo 'Lastlang was:'.$langbefore."\n".'Handled '.$count.' rows '.((microtime(true)-$this->start)/60)." min\n";
+					$this->logMessage('Lastlang was:'.$langbefore."\n".'Handled '.$count.' rows '.((microtime(true)-$this->start)/60)." min\n", 2);
 				}
 				$langbefore = $lang;
 				$articlebefore = $article;
@@ -778,15 +788,16 @@ EOQ;
 			';
 		pg_prepare($this->pgconn,'select_wikipedia_object',$sql);
 
-		$a = $this->escape($article);
+		$a = $this->escape(str_replace('_',' ',$article));
 		$aurl = urlencode(str_replace(' ','_',$a));
-		$l = $this->escape($lang);
+		$l = $this->escape(str_replace('_','-',$lang));
+		$lurl = str_replace('-','_',$l);
 		$params = array('"wikipedia:'.$l.'"=>"'.$a.'"',
 				'"wikipedia"=>"'.$l.':'.$a.'"',
-				'"wikipedia"=>"http://'.$l.'.wikipedia.org/wiki/'.$aurl.'"',
-				'"wikipedia"=>"https://'.$l.'.wikipedia.org/wiki/'.$aurl.'"',
-				'"wikipedia:'.$l.'"=>"http://'.$l.'.wikipedia.org/wiki/'.$aurl.'"',
-				'"wikipedia:'.$l.'"=>"https://'.$l.'.wikipedia.org/wiki/'.$aurl.'"');
+				'"wikipedia"=>"http://'.$lurl.'.wikipedia.org/wiki/'.$aurl.'"',
+				'"wikipedia"=>"https://'.$lurl.'.wikipedia.org/wiki/'.$aurl.'"',
+				'"wikipedia:'.$l.'"=>"http://'.$lurl.'.wikipedia.org/wiki/'.$aurl.'"',
+				'"wikipedia:'.$l.'"=>"https://'.$lurl.'.wikipedia.org/wiki/'.$aurl.'"');
 
 		$result = pg_execute($this->pgconn,'select_wikipedia_object',$params);
 		if($e = pg_last_error()) trigger_error($e, E_USER_ERROR);
@@ -805,14 +816,14 @@ EOQ;
 		/*
 		$result = pg_query($conn, $sql);
 		if (!$result) {
-		echo "Fail to fetch results from postgis \n";
+		$this->logMessage("Fail to fetch results from postgis \n", 1);
 		exit;
 		}
 		*/
 
 		// so we have to use a cursor because its too much data:
 		if (!pg_query($this->pgconn,'BEGIN WORK') || !pg_query($this->pgconn,'DECLARE osmcur NO SCROLL CURSOR FOR '.$sql)) {
-			echo 'Could not declare cursor'. "\n" . pg_last_error() . "\n";
+			$this->logMessage('Could not declare cursor'. "\n" . pg_last_error() . "\n", 1);
 			exit();
 		}
 
@@ -827,7 +838,7 @@ EOQ;
 
 		$fetchcount = pg_num_rows($result);
 
-		echo 'Get the first '.$fetchcount.' rows:'.((microtime(true)-$this->start)/60)." min\n";
+		$this->logMessage('Get the first '.$fetchcount.' rows:'.((microtime(true)-$this->start)/60)." min\n", 2);
 
 		//damn cursor loop:
 		while ($fetchcount > 0) {
@@ -838,7 +849,7 @@ EOQ;
 				unset($row);
 			}
 			$count += $fetchcount;
-			echo $count.' results processed:'.((microtime(true)-$this->start)/60)." min\n";
+			$this->logMessage($count.' results processed:'.((microtime(true)-$this->start)/60)." min\n", 2);
 			$result = pg_execute($this->pgconn,'fetch_osmcur',array());
 			$fetchcount = pg_num_rows($result);
 		}
@@ -848,4 +859,3 @@ EOQ;
 	}
 
 }
-?>

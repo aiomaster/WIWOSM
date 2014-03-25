@@ -12,7 +12,7 @@ $linkupdate = ($argc > 1) && ($argv[1] == 'link');
 
 echo date(DATE_RFC822)."\n";
 
-$wiwosm = new Wiwosm(true, $fullupdate);
+$wiwosm = new Wiwosm(true, !$linkupdate, 2);
 
 $defaultpath = $wiwosm->json_path;
 
