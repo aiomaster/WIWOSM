@@ -1,5 +1,5 @@
 <?php
-require('/home/master/class.Wiwosm.php');
+require('/data/project/wiwosm/WIWOSM/server/class.Wiwosm.php');
 
 //error_reporting(E_ERROR);
 ini_set('display_errors', false);

@@ -1,5 +1,5 @@
 <?php
-require('/home/master/class.Wiwosm.php');
+require('/data/project/wiwosm/WIWOSM/server/class.Wiwosm.php');
 
 if (PHP_SAPI === 'cli') {
 

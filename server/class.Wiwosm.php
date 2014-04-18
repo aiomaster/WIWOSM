@@ -22,7 +22,7 @@ class Wiwosm {
 		END
 	,9) AS geojson';
 
-	const JSON_PATH = '/mnt/user-store/wiwosm/geojsongz';
+	const JSON_PATH = '/data/project/wiwosm/output/geojsongz';
 	public $json_path;
 
 	private $pgconn;
@@ -46,7 +46,7 @@ class Wiwosm {
 		if ($dbconn) {
 			$this->openPgConnection();
 			if ($mysqlconn) {
-				$this->toolserver_mycnf = parse_ini_file("/home/".get_current_user()."/.my.cnf");
+				$this->toolserver_mycnf = parse_ini_file("/data/project/wiwosm/replica.my.cnf");
 				$this->openMysqlConnection();
 			}
 		}
@@ -83,7 +83,7 @@ class Wiwosm {
 	 **/
 	function openPgConnection() {
 		// open psql connection
-		$this->pgconn = pg_connect('host=sql-mapnik dbname=osm_mapnik');
+		$this->pgconn = pg_connect('user=osm host=labsdb1004.eqiad.wmnet dbname=gis');
 		// check for connection error
 		if($e = pg_last_error()) trigger_error($e, E_USER_ERROR);
 		//pg_set_client_encoding($this->pgconn, UNICODE);
@@ -93,7 +93,7 @@ class Wiwosm {
 	 * Open a mysql db connection to wikidata
 	 **/
 	function openMysqlConnection() {
-		$this->mysqliconn = new mysqli('sql-s5', $this->toolserver_mycnf['user'], $this->toolserver_mycnf['password'], 'wikidatawiki_p');
+		$this->mysqliconn = new mysqli('wikidatawiki.labsdb', $this->toolserver_mycnf['user'], $this->toolserver_mycnf['password'], 'wikidatawiki_p');
 		if (mysqli_connect_errno()) {
 			$this->logMessage('Mysql connection failed: '.mysqli_connect_error()."\n", 1);
 			exit();
@@ -145,7 +145,7 @@ class Wiwosm {
 	 * @param string $article the name of the article
 	 **/
 	function logUnknownLang($l,$a) {
-		error_log($l."\t".$a."\n",3,'/home/master/unknown.csv');
+		error_log($l."\t".$a."\n",3,'/data/project/wiwosm/unknown.csv');
 	}
 
 	/**
@@ -211,7 +211,7 @@ $htmlrows
 EOT;
 
 		//write that stuff to a file
-		$fh = fopen('/home/master/public_html/wiwosmlog/broken.html','w');
+		$fh = fopen('/data/project/wiwosm/public_html/wiwosmlog/broken.html','w');
 		fwrite($fh, $html);
 		fclose($fh);
 	}
@@ -246,7 +246,7 @@ EOT;
 		$json .= ']}';
 
 		//write that stuff to a gzipped json file
-		$handle = gzopen('/home/master/public_html/wiwosmlog/broken.dev.json.gz','w');
+		$handle = gzopen('/data/project/wiwosm/public_html/wiwosmlog/broken.json.gz','w');
 		gzwrite($handle,$json);
 		gzclose($handle);
 	}
@@ -314,9 +314,9 @@ regexp_replace(
   '^(\\w*:)\\1','\\1' -- it is possible that there is such a thing like "de:de:Artikel" left if there was a tag like "wikipedia:de=http://de.wikipedia.org/wiki/Artikel", so remove double language labels
 ) AS "wikipedia"
 FROM (
-( SELECT osm_id, tags, way FROM planet_point WHERE strpos(concat(',',array_to_string(akeys(tags),',')),',wikipedia')>0 )
-UNION ( SELECT osm_id, tags, way FROM planet_line WHERE strpos(concat(',',array_to_string(akeys(tags),',')),',wikipedia')>0 AND NOT EXISTS (SELECT 1 FROM planet_polygon WHERE planet_polygon.osm_id = planet_line.osm_id) ) -- we don't want LineStrings that exist as polygon, yet
-UNION ( SELECT osm_id, tags, way FROM planet_polygon WHERE strpos(concat(',',array_to_string(akeys(tags),',')),',wikipedia')>0 )
+( SELECT osm_id, tags, way FROM planet_osm_point WHERE strpos(concat(',',array_to_string(akeys(tags),',')),',wikipedia')>0 )
+UNION ( SELECT osm_id, tags, way FROM planet_osm_line WHERE strpos(concat(',',array_to_string(akeys(tags),',')),',wikipedia')>0 AND NOT EXISTS (SELECT 1 FROM planet_osm_polygon WHERE planet_osm_polygon.osm_id = planet_osm_line.osm_id) ) -- we don't want LineStrings that exist as polygon, yet
+UNION ( SELECT osm_id, tags, way FROM planet_osm_polygon WHERE strpos(concat(',',array_to_string(akeys(tags),',')),',wikipedia')>0 )
 ) AS wikistaff
 ) AS wikiobjects
 -- WHERE strpos(wikipedia,':')>0 -- remove tags with no language defined for example wikipedia=Artikel
@@ -324,9 +324,6 @@ ORDER BY article,lang ASC
 )
 ;
 ALTER TABLE wiwosm ADD COLUMN wikidata_ref integer DEFAULT 0;
-ALTER TABLE wiwosm OWNER TO master;
-GRANT ALL ON TABLE wiwosm TO master;
-GRANT SELECT ON TABLE wiwosm TO public;
 UPDATE wiwosm SET wikidata_ref=-1 WHERE lang = ANY (ARRAY['','http','subject','name','operator','related','sculptor','architect','maker']); -- we know that there could not be a language reference in Wikipedia for some lang values.
 COMMIT;
 EOQ;
@@ -387,7 +384,7 @@ EOQ;
 			$nodelist = array_merge($nodelist,$existingrels);
 			$waylist = array_merge($waylist,$existingrels);
 
-			// all other relations we have to pick from the planet_rels table
+			// all other relations we have to pick from the planet_osm_rels table
 			$othersubrels = array_diff($newrelscomplement,$existingrels);
 			if (count($othersubrels)>0) {
 				$othersubrelscsv = '';
@@ -397,7 +394,7 @@ EOQ;
 				}
 				$othersubrelscsv = substr($othersubrelscsv,1);
 
-				$res = pg_execute($this->pgconn,'get_member_relations_planet_rels',array('{'.$othersubrelscsv.'}'));
+				$res = pg_execute($this->pgconn,'get_member_relations_planet_osm_rels',array('{'.$othersubrelscsv.'}'));
 				if ($res) {
 					// fetch all members of all subrelations and combine them to one csv string
 					$allsubmembers = pg_fetch_all_columns($res, 0);
@@ -415,7 +412,7 @@ EOQ;
 
 	/**
 	 * Osm2pgsql doesn't get all relations by default in the standard mapnik database, because mapnik doesn't need them.
-	 * But we need them, because they can be tagged with wikipedia tags so we have to look in the planet_rels table, that is a preprocessing table for osm2pgsql that holds all the information we need, but in an ugly format.
+	 * But we need them, because they can be tagged with wikipedia tags so we have to look in the planet_osm_rels table, that is a preprocessing table for osm2pgsql that holds all the information we need, but in an ugly format.
 	 * So we have to search in the tags and members arrays if we can find something usefull, get the objects from the mapnik tables and store it in wiwosm.
 	 **/
 	function addMissingRelationObjects() {
@@ -423,30 +420,30 @@ EOQ;
 
 		// search for existing relations that are build in osm2pgsql default scheme ( executed in getAllMembers function!)
 		$result = pg_prepare($this->pgconn,'get_existing_member_relations','SELECT DISTINCT osm_id FROM (
-			(SELECT osm_id FROM planet_point WHERE osm_id = ANY ($1))
-			UNION (SELECT osm_id FROM planet_line WHERE osm_id = ANY ($1))
-			UNION (SELECT osm_id FROM planet_polygon WHERE osm_id = ANY ($1))
+			(SELECT osm_id FROM planet_osm_point WHERE osm_id = ANY ($1))
+			UNION (SELECT osm_id FROM planet_osm_line WHERE osm_id = ANY ($1))
+			UNION (SELECT osm_id FROM planet_osm_polygon WHERE osm_id = ANY ($1))
 		) AS existing');
 		if ($result === false) exit();
 
 		// fetch all members of all subrelations and combine them to one csv string ( executed in getAllMembers function!)
-		$result = pg_prepare($this->pgconn,'get_member_relations_planet_rels','SELECT members FROM planet_rels WHERE id = ANY ($1)');
+		$result = pg_prepare($this->pgconn,'get_member_relations_planet_osm_rels','SELECT members FROM planet_osm_rels WHERE id = ANY ($1)');
 		if ($result === false) exit();
 
 		// insert ways and polygons in wiwosm
 		$result = pg_prepare($this->pgconn,'insert_relways_wiwosm','INSERT INTO wiwosm SELECT $1 AS osm_id, ST_Collect(way) AS way , $2 AS lang, $3 AS article, $4 AS anchor FROM (
-			(SELECT way FROM planet_polygon WHERE osm_id = ANY ($5) )
-			UNION ( SELECT way FROM planet_line WHERE osm_id = ANY ($5) AND NOT EXISTS (SELECT 1 FROM planet_polygon WHERE planet_polygon.osm_id = planet_line.osm_id) )
+			(SELECT way FROM planet_osm_polygon WHERE osm_id = ANY ($5) )
+			UNION ( SELECT way FROM planet_osm_line WHERE osm_id = ANY ($5) AND NOT EXISTS (SELECT 1 FROM planet_osm_polygon WHERE planet_osm_polygon.osm_id = planet_osm_line.osm_id) )
 			) AS members');
 		if ($result === false) exit();
 
 		// insert nodes in wiwosm
 		$result = pg_prepare($this->pgconn,'insert_relnodes_wiwosm','INSERT INTO wiwosm SELECT $1 AS osm_id, ST_Collect(way) AS way , $2 AS lang, $3 AS article, $4 AS anchor FROM (
-			(SELECT way FROM planet_point WHERE osm_id = ANY ($5) )
+			(SELECT way FROM planet_osm_point WHERE osm_id = ANY ($5) )
 			) AS members');
 		if ($result === false) exit();
 
-		$query = "SELECT id,members,tags FROM planet_rels WHERE strpos(array_to_string(tags,','),'wikipedia')>0 AND -id NOT IN ( SELECT osm_id FROM wiwosm WHERE osm_id<0 )";
+		$query = "SELECT id,members,tags FROM planet_osm_rels WHERE strpos(array_to_string(tags,','),'wikipedia')>0 AND -id NOT IN ( SELECT osm_id FROM wiwosm WHERE osm_id<0 )";
 		$result = pg_query($this->pgconn,$query);
 		while ($row = pg_fetch_assoc($result)) {
 			// if the relation has no members ignore it and try the next one
@@ -731,9 +728,6 @@ CREATE TABLE wiwosm_wikidata (
 	article_origin text,
 	languages hstore
 );
-ALTER TABLE wiwosm_wikidata OWNER TO master;
-GRANT ALL ON TABLE wiwosm_wikidata TO master;
-GRANT SELECT ON TABLE wiwosm_wikidata TO public;
 CREATE INDEX languages_idx ON wiwosm_wikidata USING GIST (languages);
 CREATE INDEX origins_idx ON wiwosm_wikidata USING btree (lang_origin, article_origin);
 COMMIT;
@@ -781,9 +775,9 @@ EOQ;
 	function updateOneObject($lang,$article) {
 		$articlefilter = '( tags @> $1::hstore ) OR ( tags @> $2::hstore ) OR ( tags @> $3::hstore ) OR ( tags @> $4::hstore ) OR ( tags @> $5::hstore ) OR ( tags @> $6::hstore )';
 		$sql = 'SELECT '.self::simplifyGeoJSON.' FROM (
-			( SELECT way FROM planet_polygon WHERE '.$articlefilter.' )
-			UNION ( SELECT way FROM planet_line WHERE ( '.$articlefilter.' ) AND NOT EXISTS (SELECT 1 FROM planet_polygon WHERE planet_polygon.osm_id = planet_line.osm_id) )
-			UNION ( SELECT way FROM planet_point WHERE '.$articlefilter.' )
+			( SELECT way FROM planet_osm_polygon WHERE '.$articlefilter.' )
+			UNION ( SELECT way FROM planet_osm_line WHERE ( '.$articlefilter.' ) AND NOT EXISTS (SELECT 1 FROM planet_osm_polygon WHERE planet_osm_polygon.osm_id = planet_osm_line.osm_id) )
+			UNION ( SELECT way FROM planet_osm_point WHERE '.$articlefilter.' )
 			) AS wikistaff
 			';
 		pg_prepare($this->pgconn,'select_wikipedia_object',$sql);
