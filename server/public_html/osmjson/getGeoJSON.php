@@ -7,7 +7,7 @@ ini_set('html_errors', false);
 
 header('Access-Control-Allow-Origin: *');
 
-$wiwosm = new Wiwosm(false);
+$wiwosm = new Wiwosm();
 
 $article = $_GET['article'];
 $lang = $_GET['lang'];
@@ -28,8 +28,8 @@ if ($_GET['action']=='purge' && $article && $lang) {
 		echo 'update of wikidata objects in WIWOSM is not possible at the moment. Sorry!';
 		exit();
 	}
-
-	$wiwosm->openPgConnection();
+	echo 'Sorry, wiwosm is under development, so the purge feature is disabled for now!';
+	exit();
 	$wiwosm->updateOneObject($lang,$article);
 }
 
