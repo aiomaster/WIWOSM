@@ -839,7 +839,13 @@ EOQ;
 	function processOsmItems() {
 		$pgconn = $this->getPgConn();
 		// to avoid problems with geometrycollections first dump all geometries and collect them again
-		$sql = 'SELECT lang_origin, article_origin, languages, geojson FROM ( SELECT wikidata_ref,'.self::simplifyGeoJSON.' FROM  (SELECT wikidata_ref,(ST_Dump(way)).geom AS way FROM wiwosm WHERE wikidata_ref != -1 ) AS geomdump GROUP BY wikidata_ref ) AS wiwosm_refs, wiwosm_wikidata WHERE wiwosm_refs.wikidata_ref = wiwosm_wikidata.wikidata_id';
+		$sql = 'SELECT wikidata_ref, languages, geojson FROM
+				( SELECT wikidata_ref, '.self::simplifyGeoJSON.' FROM  (
+					SELECT wikidata_ref,(ST_Dump(way)).geom AS way FROM wiwosm WHERE wikidata_ref > 0
+				) AS geomdump GROUP BY wikidata_ref) AS wiwosm_geom, (
+					SELECT wikidata_id, hstore(array_agg(wiwosm_wikidata_languages.lang), array_agg(wiwosm_wikidata_languages.article)) AS languages FROM wiwosm_wikidata_languages GROUP BY wikidata_id
+				) AS wikidata_languages
+			WHERE wikidata_ref=wikidata_id';
 
 		// this consumes just too mutch memory:
 		/*
@@ -873,7 +879,7 @@ EOQ;
 		while ($fetchcount > 0) {
 			while ($row = pg_fetch_assoc($result)) {
 
-				$this->createlinks($row['lang_origin'], $row['article_origin'], $row['geojson'], $row['languages']);
+				$this->createlinks('wikidata', 'Q'.$row['wikidata_ref'], $row['geojson'], $row['languages']);
 				// free the memory
 				unset($row);
 			}
