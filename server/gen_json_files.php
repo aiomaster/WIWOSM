@@ -32,5 +32,3 @@ if (!$linkupdate) {
 $wiwosm->processOsmItems();
 if ($fullupdate || $linkupdate) $wiwosm->testAndRename();
 }
-
-?>

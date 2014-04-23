@@ -635,7 +635,7 @@ EOQ;
 	}
 
 	function map_wikidata_languages() {
-		$mysqlconn = getMysqlConn();
+		$mysqlconn = $this->getMysqlConn();
 		$this->prep_wikidata_by_wikidata_ref = $mysqlconn->prepare('SELECT `ips_item_id`,`ips_site_id`,`ips_site_page`  FROM `wb_items_per_site` WHERE `ips_item_id` = ? ');
 
 		$pgconn = $this->getPgConn();
