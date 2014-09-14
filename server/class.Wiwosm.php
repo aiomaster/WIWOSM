@@ -76,7 +76,7 @@ class Wiwosm {
 	function getPgConn() {
 		if (!$this->pgconn) {
 			// open psql connection
-			$this->pgconn = pg_connect('user=osm host=labsdb1004.eqiad.wmnet dbname=gis');
+			$this->pgconn = pg_connect('user=osm host=osmdb.eqiad.wmnet dbname=gis');
 			// check for connection error
 			if($e = pg_last_error()) trigger_error($e, E_USER_ERROR);
 			//pg_set_client_encoding($this->pgconn, UNICODE);
