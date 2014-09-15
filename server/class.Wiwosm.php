@@ -702,6 +702,7 @@ EOQ;
 
 		$langbefore = '';
 		$articlebefore = '';
+		$wikidata_id = '-1';
 
 		$count = 0;
 
@@ -740,7 +741,6 @@ EOQ;
 					$this->insert_wiwosm_wikidata_languages($this->queryWikidataLanguagesByLangArticle($lang,$article));
 				}
 			}
-			if (!isset($wikidata_id)) $wikidata_id = '-1';
 			pg_execute($pgconn,'update_wiwosm_wikidata_ref',array($wikidata_id));
 			if ($result === false) exit();
 			$count += $fetchcount;
