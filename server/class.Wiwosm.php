@@ -446,6 +446,7 @@ EOQ;
 
 		$query = "SELECT id,members,tags FROM planet_osm_rels WHERE array_to_string(tags,',') ~ 'wiki(pedia|data)' AND -id NOT IN ( SELECT osm_id FROM wiwosm WHERE osm_id<0 )";
 		$result = pg_query($pgconn,$query);
+		if ($result === false) exit();
 		while ($row = pg_fetch_assoc($result)) {
 			// if the relation has no members ignore it and try the next one
 			if (!$row['members']) continue;
@@ -739,6 +740,7 @@ EOQ;
 					$this->insert_wiwosm_wikidata_languages($this->queryWikidataLanguagesByLangArticle($lang,$article));
 				}
 			}
+			if (!isset($wikidata_id)) $wikidata_id = '-1';
 			pg_execute($pgconn,'update_wiwosm_wikidata_ref',array($wikidata_id));
 			if ($result === false) exit();
 			$count += $fetchcount;
