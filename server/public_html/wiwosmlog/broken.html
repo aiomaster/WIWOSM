@@ -64,8 +64,7 @@ $.getJSON('broken.php', function(json) {
   var columns = [
     {id: "id", name:"Row", field: "id", formatter: RowNumberFormatter, width:80, resizable:false, unselectable:true, sortable:false},
     {id: "oid", name: "OSM-Object", field: "oid", width: 200, formatter: formatter, sortable: true},
-    {id: "editpotlatch", name: "Edit Potlatch2", field: "editpotlatch",width: 130, formatter: formatter},
-    {id: "editjosm", name: "Edit JOSM/Merkaartor", field: "editjosm", width: 190, formatter: formatter},
+    {id: "edit", name: "Edit Links", field: "edit", width: 200, formatter: formatter},
     {id: "language", name: "language", field: "language", width: 100, sortable: true},
     {id: "article", name: "article", field: "article", width: 400, sortable: true},
     {id: "guessedcountry", name: "Guessed country", field: "guessedcountry", width: 250, sortable: true},
@@ -99,8 +98,7 @@ $.getJSON('broken.php', function(json) {
       data[i] = {
         id: i,
         oid: '<a href="http://www.openstreetmap.org/browse/'+type+'/'+item["i"]+'">'+item["i"]+' ('+type+')</a>',
-        editpotlatch: '<a href="http://www.openstreetmap.org/edit?editor=potlatch2&'+type+'='+item["i"]+'">Potlatch2</a>',
-        editjosm: '<a href="http://127.0.0.1:8111/load_object?objects='+item["t"]+item["i"]+'">JOSM/Merkaartor</a>',
+        edit: '<a href="http://www.openstreetmap.org/edit?editor=id&'+type+'='+item["i"]+'">ID</a>, <a href="http://www.openstreetmap.org/edit?editor=potlatch2&'+type+'='+item["i"]+'">Potlatch2</a>, <a href="http://www.openstreetmap.org/edit?editor=remote&'+type+'='+item["i"]+'">JOSM</a>',
         language: item["l"],
         article: item["a"],
         guessedcountry: item["c"],
