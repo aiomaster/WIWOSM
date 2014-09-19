@@ -289,7 +289,7 @@ EOQ;
 	/**
 	 * Throw away the wiwosm table and rebuild it from the mapnik db
 	 **/
-	function updateWiwosmDB() {
+	function createWiwosmDB() {
 $query = <<<EOQ
 BEGIN;
 DROP TABLE IF EXISTS wiwosm;
@@ -324,7 +324,7 @@ UNION ( SELECT osm_id, tags, array_to_string(akeys(tags),',') AS keys_string, ta
 ORDER BY article,lang ASC
 )
 ;
-UPDATE wiwosm SET wikidata_ref=-1 WHERE lang = ANY (ARRAY['','http','subject','name','operator','related','sculptor','architect','maker']); -- we know that there could not be a language reference in Wikipedia for some lang values.
+UPDATE wiwosm SET wikidata_ref=-1 WHERE wikidata_ref = 0 AND lang = ANY (ARRAY['','http','subject','name','operator','related','sculptor','architect','maker']); -- we know that there could not be a language reference in Wikipedia for some lang values.
 COMMIT;
 EOQ;
 
@@ -332,14 +332,17 @@ EOQ;
 		if($e = pg_last_error()) {
 			trigger_error($e, E_USER_ERROR);
 			exit();
-		} else {
-			$this->logMessage('wiwosm DB basic table build in '.((microtime(true)-$this->start)/60)." min\nStarting additional relation adding …\n", 2);
-			$this->addMissingRelationObjects();
-			$this->logMessage('Missing Relations added '.((microtime(true)-$this->start)/60)." min\nCreate Indices and link articleslanguages …\n", 2);
-			$this->createIndices();
-			$this->map_wikidata_languages();
-			$this->logMessage('wiwosm DB upgraded in '.((microtime(true)-$this->start)/60)." min\n", 2);
 		}
+	}
+
+	function updateWiwosmDB() {
+		$this->createWiwosmDB();
+		$this->logMessage('wiwosm DB basic table build in '.((microtime(true)-$this->start)/60)." min\nStarting additional relation adding …\n", 2);
+		$this->addMissingRelationObjects();
+		$this->logMessage('Missing Relations added '.((microtime(true)-$this->start)/60)." min\nCreate Indices and link articleslanguages …\n", 2);
+		$this->createIndices();
+		$this->map_wikidata_languages();
+		$this->logMessage('wiwosm DB upgraded in '.((microtime(true)-$this->start)/60)." min\n", 2);
 	}
 
 	/**
