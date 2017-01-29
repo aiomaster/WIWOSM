@@ -28,8 +28,10 @@ echo "<!--- //position:".$position." --->\n";
 }
 
 ?>
-		<script src="./OpenLayers/OpenLayers-patch2-10.js"></script>
-		<script src="http://toolserver.org/~osm/libs/openstreetmap/latest/OpenStreetMap.js"></script>
+		<script src="//tools.wmflabs.org/osm/libs/jquery/latest/jquery-min.js" type="text/javascript"></script>
+		<script src="//tools.wmflabs.org/osm/libs/openlayers/2.12/OpenLayers-min.js" type="text/javascript"></script>
+
+		<script src="//tools.wmflabs.org/osm/libs/openstreetmap/latest/OpenStreetMap.js"></script>
 		
 		<script type="text/javascript">
 			// map object
@@ -37,7 +39,7 @@ echo "<!--- //position:".$position." --->\n";
 			
 			// initiator
 			function init()
-			{ 	var urlRegex = new RegExp('^http://([abc]).www.toolserver.org/tiles/([^/]+)/(.*)$');
+			{ 	
 				
 				// show an error image for missing tiles
 				OpenLayers.Util.onImageLoadError = function()
@@ -94,9 +96,7 @@ echo "<!--- //position:".$position." --->\n";
 					
 					initialize: function(name, options) {
 						var url = [
-							"http://a.www.toolserver.org/tiles/" + name + "/${z}/${x}/${y}.png", 
-							"http://b.www.toolserver.org/tiles/" + name + "/${z}/${x}/${y}.png", 
-							"http://c.www.toolserver.org/tiles/" + name + "/${z}/${x}/${y}.png"
+							"//tiles.wmflabs.org/" + name + "/${z}/${x}/${y}.png"
 						];
 						
 						options = OpenLayers.Util.extend({numZoomLevels: 19}, options);
@@ -106,16 +106,14 @@ echo "<!--- //position:".$position." --->\n";
 					CLASS_NAME: "OpenLayers.Layer.OSM.Toolserver"
 				});
 				// add the osm from Toolserver layers
-				var osm = new OpenLayers.Layer.OSM.Toolserver('osm');
+				
+				var osm = new OpenLayers.Layer.OSM.Toolserver('osm',{
+					tileOptions: { crossOriginKeyword: null }
+					});
 				map.addLayer(osm);
-
 					
 				// add the osm.org layers
-				map.addLayer(new OpenLayers.Layer.OSM.Mapnik("osm.org mapnik"), {visibility: false});
-				
-				map.addLayer(new OpenLayers.Layer.OSM.Toolserver('hikebike'));
-				
-				map.addLayer(new OpenLayers.Layer.OSM.Toolserver('germany'));
+				map.addLayer(new OpenLayers.Layer.OSM.Mapnik("OSM.org"), {visibility: false});
 
 			      	map.addLayer(new OpenLayers.Layer.OSM(
 					'Cycle-map', 
@@ -133,11 +131,12 @@ echo "<!--- //position:".$position." --->\n";
 
 
 var pois = new OpenLayers.Layer.Vector("Commons", {
-		attribution:'CC-BY-SA by <a href="http://commons.wikimedia.org/wiki/Commons:Geocoding">Wikimedia Commons</a>',
+		attribution:'CC-BY-SA by <a href="//commons.wikimedia.org/wiki/Commons:Geocoding">Wikimedia Commons</a>',
 		projection: new OpenLayers.Projection("EPSG:4326"),
 		strategies: [bboxStrategy],
 		protocol: new OpenLayers.Protocol.HTTP({
-				url: "http://toolserver.org/~para/GeoCommons/kml.php?f=photos&simple",
+				  url: "//tools.wmflabs.org/geocommons/kml",
+				/*url: "//toolserver.org/~para/GeoCommons/kml.php?f=photos&simple",*/
 				/*url: "http://toolserver.org/~kolossos/geoworld/marks.php?LANG=<?php echo $lang;?>",*/
 				/*url: "GeoworldProxy?lang=de",*/
 				format: new OpenLayers.Format.KML({
