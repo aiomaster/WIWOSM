@@ -111,11 +111,6 @@ function init()
     // add the osm.org layers
     map.addLayer(new OpenLayers.Layer.OSM.Mapnik("OSM.org"), {visibility: false});
 
-        map.addLayer(new OpenLayers.Layer.OSM(
-        'Cycle-map',
-        'http://c.tile.opencyclemap.org/cycle/${z}/${x}/${y}.png'
-    ));
-
     var bboxStrategy = new OpenLayers.Strategy.BBOX( {
         ratio : 1.1,
         resFactor: 1
@@ -237,15 +232,15 @@ function init()
                 highlightFeature.geometry.getBounds().getCenterLonLat(),
                 new OpenLayers.Size(200,200),
                 "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"+highlightFeature.attributes.description.replace(/<[hH][1-3][^>]*>(.*?)<\/[hH][1-3]>/,""), null, false, null );
-        tooltipPopup.contentDiv.style.backgroundColor='ffffcb';
-        tooltipPopup.contentDiv.style.overflow='hidden';
-        tooltipPopup.contentDiv.style.padding='0px';
-        tooltipPopup.contentDiv.style.margin='3px';
-        tooltipPopup.border = '0px solid #DBDBD3';
-        tooltipPopup.closeOnMove = true;
-        tooltipPopup.autoSize = true;
-        highlightFeature.popup = tooltipPopup;
-        map.addPopup(tooltipPopup);
+	    tooltipPopup.contentDiv.style.backgroundColor='ffffff';
+    	tooltipPopup.contentDiv.style.overflow='hidden';
+    	tooltipPopup.contentDiv.style.padding='6px';
+    	tooltipPopup.contentDiv.style.margin='0px';
+    	tooltipPopup.border = '3px solid #DBDBD3';
+    	tooltipPopup.closeOnMove = true;
+    	tooltipPopup.autoSize = true;    	
+    	highlightFeature.popup = tooltipPopup;
+    	map.addPopup(tooltipPopup);    	
     }
 
     function eventTooltipOff  (evt) {
