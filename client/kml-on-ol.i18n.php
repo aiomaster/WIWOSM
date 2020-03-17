@@ -145,14 +145,18 @@ $messages['ca'] = array(
 
 /** Czech (česky)
  * @author Mormegil
+ * @author Dvorapa
  */
-$messages['cs'] = array(
-	'ts-kml-on-ol-options' => 'Možnosti',
-	'ts-kml-on-ol-languages' => 'Jazyky',
-	'ts-kml-on-ol-thumbnails' => 'Náhledy',
-	'ts-kml-on-ol-help' => 'Nápověda',
-	'ts-kml-on-ol-all' => 'Všechny',
-	'ts-kml-on-ol-map-by' => 'Mapa z',
+$messages['en'] = array(
+    'ts-kml-on-ol-options' => 'Možnosti',
+    'ts-kml-on-ol-languages' => 'Články z',
+    'ts-kml-on-ol-thumbnails' => 'Obrázky',
+    'ts-kml-on-ol-help' => 'Nápověda',
+    'ts-kml-on-ol-all' => 'Všechny',
+    'ts-kml-on-ol-map-by' => 'Mapa od',
+    'ts-kml-on-ol-openstreetmap' => 'OpenStreetMap',
+    'ts-kml-on-ol-wikipedia' => 'Wikipedie',
+    'ts-kml-on-ol-coat-of-arms' => 'Erby'
 );
 
 /** German (Deutsch)
